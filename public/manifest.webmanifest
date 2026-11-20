@@ -1,0 +1,19 @@
+{
+  "name": "Shatter",
+  "short_name": "Shatter",
+  "description": "A hand-drawn brick breaker.",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "start_url": "./",
+  "scope": "./",
+  "background_color": "#f6f1e3",
+  "theme_color": "#f6f1e3",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

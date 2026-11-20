@@ -1,0 +1,11 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  base: './',
+  worker: { format: 'es' },
+  build: { target: 'es2020' },
+  test: {
+    environment: 'node',
+    include: ['tests/**/*.test.ts'],
+  },
+});

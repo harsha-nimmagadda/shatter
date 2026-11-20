@@ -2,47 +2,40 @@ import './style.css';
 import { View, LOGICAL_W, LOGICAL_H } from './game/view';
 import { Loop } from './game/loop';
 import { enterImmersive } from './game/fullscreen';
-
-// Placeholder demo: a bouncing ball over ruled paper and a paddle. Proves the loop and scaling.
-const BALL_R = 8;
-const BALL_SPEED = 360;
-const PADDLE = { x: 210, y: LOGICAL_H - 80, w: 120, h: 16 };
+import { CONFIG, LEVEL_1, createWorld, drainEvents, step, type World } from './engine';
+import { createTempInput } from './input/temp';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d');
 if (!ctx) throw new Error('2D canvas not supported');
 
 const view = new View(canvas);
+const input = createTempInput(canvas, view);
 
-const ball = { x: 200, y: 400, vx: BALL_SPEED * 0.6, vy: -BALL_SPEED * 0.8 };
-let prevX = ball.x;
-let prevY = ball.y;
+const newWorld = (): World => createWorld(LEVEL_1, { seed: (Date.now() ^ (Math.random() * 2 ** 32)) >>> 0 });
+let world = newWorld();
+/** Ball positions before the last step, for render interpolation. */
+let prev: { x: number; y: number }[] = world.balls.map((b) => ({ x: b.x, y: b.y }));
 
 function update(dt: number): void {
-  prevX = ball.x;
-  prevY = ball.y;
-  ball.x += ball.vx * dt;
-  ball.y += ball.vy * dt;
-
-  if (ball.x < BALL_R) {
-    ball.x = BALL_R;
-    ball.vx = Math.abs(ball.vx);
-  } else if (ball.x > LOGICAL_W - BALL_R) {
-    ball.x = LOGICAL_W - BALL_R;
-    ball.vx = -Math.abs(ball.vx);
+  const inp = input.sample();
+  if ((world.status === 'won' || world.status === 'gameover') && inp.fire) {
+    world = newWorld();
+    prev = world.balls.map((b) => ({ x: b.x, y: b.y }));
+    return;
   }
-  if (ball.y < BALL_R) {
-    ball.y = BALL_R;
-    ball.vy = Math.abs(ball.vy);
-  } else if (ball.y > LOGICAL_H - BALL_R) {
-    ball.y = LOGICAL_H - BALL_R;
-    ball.vy = -Math.abs(ball.vy);
-  }
+  prev = world.balls.map((b) => ({ x: b.x, y: b.y }));
+  step(world, inp, dt);
 }
+
+const BRICK_COLORS = ['', '#f3b562', '#7bb8e8', '#e87a7a'];
 
 function render(alpha: number): void {
   const c = ctx as CanvasRenderingContext2D;
   view.begin(c);
+
+  // Hook for sounds / particles: react to world events here.
+  drainEvents(world);
 
   // Paper playfield.
   c.fillStyle = '#fffdf6';
@@ -65,17 +58,47 @@ function render(alpha: number): void {
   c.lineTo(60.5, LOGICAL_H);
   c.stroke();
 
-  // Paddle.
-  c.fillStyle = '#2b2b2b';
-  c.fillRect(PADDLE.x, PADDLE.y, PADDLE.w, PADDLE.h);
+  for (const k of world.bricks) {
+    c.fillStyle = k.kind === 'steel' ? '#8a8f98' : BRICK_COLORS[k.hp] ?? '#e87a7a';
+    c.fillRect(k.x, k.y, k.w, k.h);
+    c.strokeStyle = '#2b2b2b';
+    c.strokeRect(k.x, k.y, k.w, k.h);
+  }
 
-  // Ball, interpolated between the last two fixed steps.
-  const bx = prevX + (ball.x - prevX) * alpha;
-  const by = prevY + (ball.y - prevY) * alpha;
+  const p = world.paddle;
+  c.fillStyle = '#2b2b2b';
+  c.fillRect(p.x - p.w / 2, p.y, p.w, p.h);
+
   c.fillStyle = '#1d3f8f';
-  c.beginPath();
-  c.arc(bx, by, BALL_R, 0, Math.PI * 2);
-  c.fill();
+  world.balls.forEach((b, i) => {
+    const pv = prev[i] ?? b;
+    c.beginPath();
+    c.arc(pv.x + (b.x - pv.x) * alpha, pv.y + (b.y - pv.y) * alpha, b.r, 0, Math.PI * 2);
+    c.fill();
+  });
+
+  // HUD.
+  c.fillStyle = '#2b2b2b';
+  c.font = '24px sans-serif';
+  c.textBaseline = 'middle';
+  c.textAlign = 'left';
+  c.fillText(`Score ${world.score}`, 16, CONFIG.topWall / 2);
+  c.textAlign = 'right';
+  c.fillText(`Lives ${world.lives}`, LOGICAL_W - 16, CONFIG.topWall / 2);
+
+  const msg =
+    world.status === 'serve'
+      ? 'Tap to launch'
+      : world.status === 'won'
+        ? 'You win! Tap to play again'
+        : world.status === 'gameover'
+          ? 'Game over. Tap to retry'
+          : '';
+  if (msg) {
+    c.textAlign = 'center';
+    c.font = '32px sans-serif';
+    c.fillText(msg, LOGICAL_W / 2, LOGICAL_H / 2);
+  }
 }
 
 const loop = new Loop(update, render);

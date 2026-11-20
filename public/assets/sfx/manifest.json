@@ -1,0 +1,59 @@
+{
+ "break": [
+  "break-1.mp3"
+ ],
+ "brick": [
+  "brick-1.mp3"
+ ],
+ "click": [
+  "click-1.mp3"
+ ],
+ "eraser": [
+  "eraser-1.mp3"
+ ],
+ "explode": [
+  "explode-1.mp3"
+ ],
+ "gameover": [
+  "gameover-1.mp3"
+ ],
+ "laser": [
+  "laser-1.mp3"
+ ],
+ "launch": [
+  "launch-1.mp3"
+ ],
+ "lifelost": [
+  "lifelost-1.mp3"
+ ],
+ "net": [
+  "net-1.mp3"
+ ],
+ "paddle": [
+  "paddle-1.mp3"
+ ],
+ "powerdown": [
+  "powerdown-1.mp3"
+ ],
+ "powerup": [
+  "powerup-1.mp3"
+ ],
+ "regen": [
+  "regen-1.mp3"
+ ],
+ "reveal": [
+  "reveal-1.mp3"
+ ],
+ "shred": [
+  "shred-1.mp3"
+ ],
+ "steel": [
+  "steel-1.mp3"
+ ],
+ "wall": [
+  "wall-1.mp3"
+ ],
+ "won": [
+  "won-1.mp3"
+ ]
+}

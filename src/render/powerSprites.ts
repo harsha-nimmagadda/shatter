@@ -13,11 +13,13 @@ import {
   hatchLines,
   type Pt,
 } from './sketch';
-import { isBadPower, powerLetter, resolveIcon } from './powerVisuals';
+import { drawGlyph } from './powerGlyphs';
+import { categoryColor, isBadPower, powerLetter, resolveIcon } from './powerVisuals';
 import type { Skin } from './skin';
 
 /** Sprite content-box sizes and pads. */
-export const CAPSULE_PAD = 9;
+export const CAPSULE_SIZE = 34;
+export const CAPSULE_PAD = 6;
 export const HUD_ICON = 22;
 export const HUD_PAD = 3;
 export const OVERLAY_PAD = 10;
@@ -32,7 +34,6 @@ export const GOOD_COLOR = '#2f78b5';
 export const GREEN_COLOR = '#3a9a5b';
 export const BAD_COLOR = '#c93a3a';
 export const EXPLOSIVE_COLOR = '#e8602c';
-export const FIRE_COLOR = '#f2701c';
 
 // ---------------------------------------------------------------- art helpers
 
@@ -117,13 +118,6 @@ export function drawArt(
 
 export const hasArt = (skin: Skin) => (id: string): boolean => (skin.assets?.get(id).length ?? 0) > 0;
 
-function arrow(ctx: CanvasRenderingContext2D, rng: Rng, x1: number, y1: number, x2: number, y2: number, color: string, w: number): void {
-  const a = Math.atan2(y2 - y1, x2 - x1);
-  const hl = 4.5;
-  strokePath(ctx, [{ x: x1, y: y1 }, { x: (x1 + x2) / 2 + rng.range(-0.5, 0.5), y: (y1 + y2) / 2 + rng.range(-0.5, 0.5) }, { x: x2, y: y2 }], rng, color, w);
-  strokePath(ctx, [{ x: x2 - Math.cos(a - 0.5) * hl, y: y2 - Math.sin(a - 0.5) * hl }, { x: x2, y: y2 }, { x: x2 - Math.cos(a + 0.5) * hl, y: y2 - Math.sin(a + 0.5) * hl }], rng, color, w);
-}
-
 /** Power icon centred at (cx, cy) in a `size` box: art, procedural inward arrows (shrink) or a lettered doodle. */
 export function drawPowerIcon(
   ctx: CanvasRenderingContext2D,
@@ -136,14 +130,8 @@ export function drawPowerIcon(
 ): void {
   const res = resolveIcon(type, hasArt(skin));
   if (res.source === 'art' && res.id && drawArt(ctx, skin, res.id, 1, cx, cy, size)) return;
-  const bad = isBadPower(type);
-  const color = bad ? BAD_COLOR : GOOD_COLOR;
-  if (res.source === 'arrows') {
-    const h = size * 0.32;
-    arrow(ctx, rng, cx - h * 1.6, cy, cx - h * 0.25, cy, color, 2.2);
-    arrow(ctx, rng, cx + h * 1.6, cy, cx + h * 0.25, cy, color, 2.2);
-    return;
-  }
+  if (drawGlyph(ctx, type, cx, cy, size * 0.85, rng)) return;
+  const color = isBadPower(type) ? BAD_COLOR : GOOD_COLOR;
   strokePath(ctx, roughCirclePoints(cx, cy, size * 0.36, rng, 0.06), rng, color, 1.8);
   ctx.font = `${Math.round(size * 0.5)}px ${skin.font}`;
   ctx.fillStyle = skin.ink;
@@ -155,22 +143,32 @@ export function drawPowerIcon(
 // ---------------------------------------------------------------- drops / HUD
 
 export function capsuleColor(type: string): string {
-  if (isBadPower(type)) return BAD_COLOR;
-  // TODO(render-revamp): category-coloured badges.
-  return type === 'goldstar' || type === 'stickynote' || type === 'eraser' || type === 'correction' ? GREEN_COLOR : GOOD_COLOR;
+  return categoryColor(type);
 }
 
-/** Falling power-up capsule: rough rounded outline + icon (content box 36 x 20, icon overflows a little). */
-export function renderCapsule(ctx: CanvasRenderingContext2D, skin: Skin, type: string, w: number, h: number, variant: number): void {
+/** Falling power-up: a round sticker badge (wobbly outline, category-coloured ring, icon, no text). Content box is size x size. */
+export function renderCapsule(ctx: CanvasRenderingContext2D, skin: Skin, type: string, size: number, variant: number): void {
   const rng = createRng(mixSeed(type.length * 977 + type.charCodeAt(0), variant + 1, 41));
-  const bad = isBadPower(type);
-  const outline = roughRoundRectPoints(0.5, 0.5, w - 1, h - 1, h * 0.5, rng, 0.7);
-  tracePolygon(ctx, outline);
-  ctx.fillStyle = bad ? '#fbe2df' : '#e6f1fa';
+  const c = size / 2;
+  const ring = capsuleColor(type);
+  // Sticker body with a little drop shadow.
+  const outer = roughCirclePoints(c, c, c - 1.5, rng, 0.025);
+  ctx.save();
+  ctx.translate(1, 1.5);
+  tracePolygon(ctx, outer);
+  ctx.fillStyle = '#000';
+  ctx.globalAlpha = 0.16;
   ctx.fill();
-  strokePath(ctx, outline, rng, capsuleColor(type), 2.3);
-  strokePath(ctx, roughRoundRectPoints(2.2, 2, w - 4.4, h - 4, h * 0.4, rng, 0.8), rng, capsuleColor(type), 1.1, 0.45);
-  drawPowerIcon(ctx, skin, type, w / 2, h / 2, 30, rng);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  tracePolygon(ctx, outer);
+  ctx.fillStyle = '#fffdf6';
+  ctx.fill();
+  // Coloured ring: ink outline outside, thick category ring, thin ink line inside.
+  strokePath(ctx, outer, rng, skin.ink, 1.5);
+  strokePath(ctx, roughCirclePoints(c, c, c - 4.2, rng, 0.02), rng, ring, 3.4);
+  strokePath(ctx, roughCirclePoints(c, c, c - 6.6, rng, 0.02), rng, skin.ink, 0.8, 0.45);
+  drawPowerIcon(ctx, skin, type, c, c, size * 0.6, rng);
 }
 
 /** Small HUD icon (content box HUD_ICON square). */
@@ -181,7 +179,7 @@ export function renderHudIcon(ctx: CanvasRenderingContext2D, skin: Skin, type: s
 
 // ---------------------------------------------------------------- paddle overlays
 
-export type OverlayKind = 'glue' | 'cannons' | 'ink' | 'ticks';
+export type OverlayKind = 'glue' | 'staplers' | 'paperclip' | 'ticks';
 
 export function renderPaddleOverlay(ctx: CanvasRenderingContext2D, skin: Skin, kind: OverlayKind, w: number, h: number, variant: number): void {
   const rng = createRng(mixSeed(Math.round(w), variant + 1, 50 + kind.length));
@@ -223,42 +221,53 @@ export function renderPaddleOverlay(ctx: CanvasRenderingContext2D, skin: Skin, k
       }
       break;
     }
-    case 'cannons': {
-      for (const cx of [5, w - 5]) {
-        const base = roughPolygon(cx - 4, -8, 8, 9, rng, 0.5);
+    case 'staplers': {
+      // A small stapler at each end: grey base, red head tilted a little, a staple poking out of the top.
+      for (const [cx, dir] of [[8, 1], [w - 8, -1]] as const) {
+        const base = roughPolygon(cx - 7, -3, 14, 5, rng, 0.4);
         tracePolygon(ctx, base);
-        ctx.fillStyle = '#b4b9c1';
+        ctx.fillStyle = '#5a5f68';
         ctx.fill();
-        strokePath(ctx, [...base, base[0]], rng, skin.ink, 1.5);
-        strokePath(ctx, [{ x: cx - 1.4, y: -8 }, { x: cx - 1.4, y: -11 }, { x: cx + 1.4, y: -11 }, { x: cx + 1.4, y: -8 }], rng, skin.ink, 1.4);
+        strokePath(ctx, [...base, base[0]], rng, skin.ink, 1.2);
+        const head: Pt[] = [
+          { x: cx - 7 * dir, y: -3 },
+          { x: cx - 5 * dir, y: -9.5 },
+          { x: cx + 6 * dir, y: -7.5 },
+          { x: cx + 7 * dir, y: -3 },
+        ];
+        tracePolygon(ctx, head);
+        ctx.fillStyle = '#d03b3b';
+        ctx.fill();
+        strokePath(ctx, [...head, head[0]], rng, skin.ink, 1.3);
+        strokePath(ctx, [{ x: cx - 1.5, y: -9.6 }, { x: cx - 1.5, y: -12 }, { x: cx + 1.5, y: -12 }, { x: cx + 1.5, y: -9.6 }], rng, '#8b9099', 1.4);
       }
       break;
     }
-    case 'ink': {
-      const n = 14;
+    case 'paperclip': {
+      // Big paperclip lying across the paddle centre, tilted a few degrees.
       const cx = w / 2;
-      const cy = h / 2;
+      ctx.save();
+      ctx.translate(cx, h / 2 - 1);
+      ctx.rotate(-0.12);
+      ctx.strokeStyle = '#8a9099';
+      ctx.lineWidth = 1.9;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       ctx.beginPath();
-      for (let i = 0; i <= n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        const rr = (i % 2 ? 0.34 : 0.46) * w * rng.range(0.6, 1);
-        const px = cx + Math.cos(a) * rr;
-        const py = cy + Math.sin(a) * Math.min(rr * 0.5, h * 0.9);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.quadraticCurveTo(cx + Math.cos(a - 0.2) * rr * 1.1, cy + Math.sin(a - 0.2) * Math.min(rr * 0.55, h), px, py);
-      }
-      ctx.closePath();
-      ctx.fillStyle = '#17171c';
-      ctx.globalAlpha = 0.9;
-      ctx.fill();
-      for (let i = 0; i < 7; i++) {
-        const a = rng.range(0, Math.PI * 2);
-        const d = rng.range(0.3, 0.5) * w;
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * d, cy + Math.sin(a) * Math.min(d * 0.45, h + 4), rng.range(0.8, 2), 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.moveTo(-13, 3);
+      ctx.lineTo(-13, -4);
+      ctx.lineTo(10, -4);
+      ctx.arc(10, 0, 4, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(-9, 4);
+      ctx.arc(-9, 0.5, 3.5, Math.PI / 2, -Math.PI / 2 + 0.2);
+      ctx.lineTo(7, -1.5);
+      ctx.stroke();
+      ctx.strokeStyle = skin.ink;
+      ctx.lineWidth = 0.7;
+      ctx.globalAlpha = 0.5;
+      ctx.stroke();
       ctx.globalAlpha = 1;
+      ctx.restore();
       break;
     }
   }
@@ -266,7 +275,7 @@ export function renderPaddleOverlay(ctx: CanvasRenderingContext2D, skin: Skin, k
 
 // ---------------------------------------------------------------- balls
 
-export type BallStyle = 'fire' | 'through' | 'crumpled';
+export type BallStyle = 'crumpled';
 
 export function renderStyledBall(
   ctx: CanvasRenderingContext2D,
@@ -274,43 +283,27 @@ export function renderStyledBall(
   style: BallStyle,
   r: number,
   variant: number,
-  base: (g: CanvasRenderingContext2D, v: number) => void,
 ): void {
   const rng = createRng(mixSeed(Math.round(r * 10), variant + 1, 60 + style.length));
-  if (style === 'crumpled') {
-    const R = r * 1.35;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(R, R, R * 0.96, 0, Math.PI * 2);
-    ctx.fillStyle = '#f4f2ea';
-    ctx.fill();
-    ctx.clip();
-    const drawn = drawArt(ctx, skin, 'ball-crumpled', variant, R, R, R * 2.15, (variant - 1) * 0.3);
-    ctx.restore();
-    if (!drawn) {
-      ctx.save();
-      ctx.translate(R - r, R - r);
-      base(ctx, variant);
-      ctx.restore();
+  const R = r * 1.35;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(R, R, R * 0.96, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4f2ea';
+  ctx.fill();
+  ctx.clip();
+  const drawn = drawArt(ctx, skin, 'ball-crumpled', variant, R, R, R * 2.15, (variant - 1) * 0.3);
+  if (!drawn) {
+    // Procedural crumpled wad: grey creases over a pale ball.
+    const cr = createRng(mixSeed(Math.round(r * 10), 0, 61));
+    for (let i = 0; i < 6; i++) {
+      const a = cr.range(0, Math.PI);
+      const o = cr.range(-R * 0.6, R * 0.6);
+      strokePath(ctx, [{ x: R + Math.cos(a) * R + o * 0.3, y: R + Math.sin(a) * R + o }, { x: R - Math.cos(a) * R * 0.6, y: R - Math.sin(a) * R * 0.6 + o * 0.5 }], rng, '#8a8d93', 1, 0.8);
     }
-    strokePath(ctx, roughCirclePoints(R, R, R * 0.95, rng, 0.07), rng, skin.ink, 1.6, 0.9);
-    return;
   }
-  base(ctx, variant);
-  if (style === 'fire') {
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = FIRE_COLOR;
-    ctx.fillRect(-4, -4, r * 2 + 8, r * 2 + 8);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-    strokePath(ctx, roughCirclePoints(r, r, r * 1.12, rng, 0.08), rng, '#e8431f', 1.8);
-    strokePath(ctx, roughCirclePoints(r, r, r * 1.3, rng, 0.12), rng, FIRE_COLOR, 1.1, 0.6);
-  } else {
-    ctx.setLineDash([2.5, 2.5]);
-    strokePath(ctx, roughCirclePoints(r, r, r * 1.08, rng, 0.05), rng, skin.ink, 1.4);
-    ctx.setLineDash([]);
-  }
+  ctx.restore();
+  strokePath(ctx, roughCirclePoints(R, R, R * 0.95, rng, 0.04), rng, skin.ink, 1.6, 0.9);
 }
 
 /** Paper-plane glyph pointing along +x, centred in a PLANE_SIZE square. */

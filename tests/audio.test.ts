@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyFades, normalizePeak, peak, pickVariant, processSample, trimSilence } from '../src/audio/dsp';
 import { panFromX, soundsForEvents } from '../src/audio/events';
+import { SOUND_IDS } from '../src/audio/sound';
 import { PlayLimiter } from '../src/audio/limiter';
 import { parseSettings } from '../src/input/settings';
 import type { GameEvent } from '../src/engine';
@@ -92,7 +93,10 @@ describe('PlayLimiter', () => {
 describe('soundsForEvents', () => {
   it('maps simple events', () => {
     expect(ids([ev('wall'), ev('paddle'), ev('launch'), ev('explode'), ev('staple'), ev('eraser')])).toEqual([
-      'wall', 'paddle', 'launch', 'explode', 'laser', 'eraser',
+      'wall', 'paddle', 'launch', 'explode', 'staple', 'eraser',
+    ]);
+    expect(ids([ev('clipLoose'), ev('clipPop'), ev('splash'), ev('combo', { value: 2 }), ev('extraLife')])).toEqual([
+      'cliploose', 'clippop', 'splash', 'combo', 'goldstar',
     ]);
     expect(ids([ev('lifeLost'), ev('gameover'), ev('won'), ev('regen'), ev('reveal'), ev('net')])).toEqual([
       'lifelost', 'gameover', 'won', 'regen', 'reveal', 'net',
@@ -111,9 +115,12 @@ describe('soundsForEvents', () => {
   });
   it('good and bad power-ups', () => {
     expect(ids([ev('powerup', { power: 'ruler' })])).toEqual(['powerup']);
-    for (const p of ['sharpener', 'scissors', 'redpen'] as const) {
-      expect(ids([ev('powerup', { power: p })])).toEqual(['powerdown']);
+    expect(ids([ev('powerup', { power: 'sharpener' })])).toEqual(['powerdown']);
+    const specific = { scissors: 'snip', paperclip: 'paperclip', goldstar: 'goldstar', redpen: 'redpen' } as const;
+    for (const [p, id] of Object.entries(specific)) {
+      expect(ids([ev('powerup', { power: p as keyof typeof specific })])).toEqual([id]);
     }
+    expect(ids([ev('powerup', { power: 'goldstar' }), ev('extraLife')])).toEqual(['goldstar']);
   });
   it('passes x and pans subtly', () => {
     expect(soundsForEvents([ev('wall', { x: 7 })])[0].x).toBe(7);
@@ -121,6 +128,14 @@ describe('soundsForEvents', () => {
     expect(panFromX(540, 540)).toBeCloseTo(0.4);
     expect(panFromX(270, 540)).toBeCloseTo(0);
     expect(panFromX(undefined)).toBe(0);
+  });
+});
+
+describe('new sound ids', () => {
+  it('are all registered for the synth fallback', () => {
+    for (const id of ['staple', 'cliploose', 'clippop', 'snip', 'splash', 'paperclip', 'goldstar', 'redpen', 'combo']) {
+      expect(SOUND_IDS as readonly string[]).toContain(id);
+    }
   });
 });
 

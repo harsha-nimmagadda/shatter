@@ -5,7 +5,9 @@ import type { Skin } from './skin';
 
 const W = CONFIG.width;
 const H = CONFIG.height;
-const MAX_FLOATS = 6;
+const MAX_FLOATS = 8;
+const MAX_WOBBLES = 6;
+const MAX_FLYERS = 4;
 const MAX_BLASTS = 4;
 const MAX_ERASERS = 3;
 const MAX_POPS = 12;
@@ -14,6 +16,8 @@ export const BLAST_LIFE = 0.42;
 export const ERASER_LIFE = 0.35;
 export const POP_LIFE = 0.3;
 const SPEED_LIFE = 0.5;
+export const WOBBLE_LIFE = 0.4;
+const FLYER_LIFE = 0.7;
 
 /** Live-drawn, short-lived effects held in small fixed pools (nothing allocates after construction). */
 export class PowerFx {
@@ -39,6 +43,21 @@ export class PowerFx {
   private pCursor = 0;
   private popCount = 0;
 
+  private readonly wId = new Int32Array(MAX_WOBBLES);
+  private readonly wAge = new Float32Array(MAX_WOBBLES).fill(-1);
+  private wCursor = 0;
+  private wCount = 0;
+
+  private readonly flX = new Float32Array(MAX_FLYERS);
+  private readonly flY = new Float32Array(MAX_FLYERS);
+  private readonly flVx = new Float32Array(MAX_FLYERS);
+  private readonly flVy = new Float32Array(MAX_FLYERS);
+  private readonly flW = new Float32Array(MAX_FLYERS);
+  private readonly flH = new Float32Array(MAX_FLYERS);
+  private readonly flRot = new Float32Array(MAX_FLYERS);
+  private readonly flAge = new Float32Array(MAX_FLYERS).fill(-1);
+  private flCursor = 0;
+
   private speedT = 0;
   private speedDir = 1;
   private seed = 12345;
@@ -48,6 +67,9 @@ export class PowerFx {
     this.bAge.fill(-1);
     this.eAge.fill(-1);
     this.popAge.fill(-1);
+    this.wAge.fill(-1);
+    this.flAge.fill(-1);
+    this.wCount = 0;
     this.popCount = 0;
     this.speedT = 0;
   }
@@ -90,6 +112,37 @@ export class PowerFx {
     this.popAge[i] = 0;
   }
 
+  /** A loose clip rattling in place. */
+  addWobble(brickId: number): void {
+    const i = this.wCursor;
+    this.wCursor = (i + 1) % MAX_WOBBLES;
+    this.wId[i] = brickId;
+    this.wAge[i] = 0;
+  }
+
+  /** Rotation offset (radians) of a rattling clip, 0 when none is running. */
+  wobbleOf(id: number): number {
+    if (this.wCount === 0) return 0;
+    for (let i = 0; i < MAX_WOBBLES; i++) {
+      if (this.wAge[i] >= 0 && this.wId[i] === id) return Math.sin(this.wAge[i] * 70) * 0.1 * (1 - this.wAge[i] / WOBBLE_LIFE);
+    }
+    return 0;
+  }
+
+  /** A popped clip flying off the playfield with a spin. */
+  addFlyer(x: number, y: number, w: number, h: number, dir: number): void {
+    const i = this.flCursor;
+    this.flCursor = (i + 1) % MAX_FLYERS;
+    this.flX[i] = x;
+    this.flY[i] = y;
+    this.flVx[i] = dir * (140 + this.rnd() * 120);
+    this.flVy[i] = -380 - this.rnd() * 120;
+    this.flW[i] = w;
+    this.flH[i] = h;
+    this.flRot[i] = 0;
+    this.flAge[i] = 0;
+  }
+
   addSpeed(dir: 1 | -1): void {
     this.speedT = SPEED_LIFE;
     this.speedDir = dir;
@@ -113,7 +166,47 @@ export class PowerFx {
       if (this.popAge[i] >= 0) pops++;
     }
     this.popCount = pops;
+    let wc = 0;
+    for (let i = 0; i < MAX_WOBBLES; i++) {
+      if (this.wAge[i] < 0) continue;
+      this.wAge[i] = this.wAge[i] + dt >= WOBBLE_LIFE ? -1 : this.wAge[i] + dt;
+      if (this.wAge[i] >= 0) wc++;
+    }
+    this.wCount = wc;
+    for (let i = 0; i < MAX_FLYERS; i++) {
+      if (this.flAge[i] < 0) continue;
+      this.flAge[i] = this.flAge[i] + dt >= FLYER_LIFE ? -1 : this.flAge[i] + dt;
+      this.flVy[i] += 1500 * dt;
+      this.flX[i] += this.flVx[i] * dt;
+      this.flY[i] += this.flVy[i] * dt;
+      this.flRot[i] += (this.flVx[i] > 0 ? 9 : -9) * dt;
+    }
     this.speedT = Math.max(0, this.speedT - dt);
+  }
+
+  drawFlyers(ctx: CanvasRenderingContext2D, skin: Skin): void {
+    for (let i = 0; i < MAX_FLYERS; i++) {
+      const a = this.flAge[i];
+      if (a < 0) continue;
+      const w = this.flW[i];
+      const h = this.flH[i];
+      ctx.save();
+      ctx.translate(this.flX[i], this.flY[i]);
+      ctx.rotate(this.flRot[i]);
+      ctx.globalAlpha = Math.min(1, (1 - a / FLYER_LIFE) * 2);
+      ctx.fillStyle = skin.steel;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.strokeStyle = skin.ink;
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
+      ctx.fillStyle = '#5b6068';
+      ctx.beginPath();
+      ctx.arc(-w / 2 + 6, 0, 2.4, 0, Math.PI * 2);
+      ctx.arc(w / 2 - 6, 0, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
   }
 
   /** Draws active eraser sweeps; onCrumb is called with the eraser's leading edge so crumbs can be emitted. */
@@ -165,6 +258,16 @@ export class PowerFx {
         ctx.strokeStyle = pass === 0 ? '#e8431f' : skin.ink;
         ctx.lineWidth = pass === 0 ? 2.6 : 1.4;
         ctx.stroke();
+      }
+      // Ink-splatter ring: dark blots flung out past the star.
+      ctx.fillStyle = skin.ink;
+      ctx.globalAlpha = alpha * 0.8;
+      for (let k = 0; k < STAR_PTS; k++) {
+        const ang = (k / STAR_PTS) * Math.PI * 2 + 0.2;
+        const rr = (1.05 + 0.35 * this.bRad[i * STAR_PTS + k]) * grow;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(ang) * rx * rr, cy + Math.sin(ang) * ry * rr, 1.4 + 2.2 * this.bRad[i * STAR_PTS + (k + 3) % STAR_PTS] * (1 - t), 0, Math.PI * 2);
+        ctx.fill();
       }
     }
     ctx.globalAlpha = 1;

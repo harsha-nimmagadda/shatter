@@ -1,30 +1,29 @@
-import { CONFIG, EFFECT_NAMES, type EffectName, type PowerType } from '../engine';
+import { CONFIG, EFFECT_NAMES, POWER_CATEGORY, type EffectName, type PowerCategory, type PowerType } from '../engine';
 
 /** Pure helpers for the power-up visuals (no canvas), so they can be unit tested in Node. */
 
 /** Engine power type -> manifest icon id. null = no art, draw procedurally. */
 export const ICON_IDS: Record<PowerType, string | null> = {
-  // TODO(render-revamp): real icons for the revamp power-ups; these reuse the old art.
-  photocopy: 'icon-multiball',
+  photocopy: 'icon-photocopy',
   crumpled: 'icon-crumpled',
   plane: 'icon-paper-plane',
-  highlighter: null,
-  correction: 'icon-slowdown',
+  highlighter: 'icon-highlighter',
+  correction: 'icon-correction-tape',
   ruler: 'icon-ruler',
-  gluestick: 'icon-catch',
-  stapler: 'icon-laser',
+  gluestick: 'icon-glue-stick',
+  stapler: 'icon-stapler',
   eraser: 'icon-eraser',
-  goldstar: 'icon-extra-life',
-  paperclip: null,
+  goldstar: 'icon-gold-star',
+  paperclip: 'icon-paperclip',
   stickynote: 'icon-sticky-note',
   sharpener: 'icon-sharpener',
-  scissors: 'icon-kill-paddle',
-  redpen: 'icon-speedup',
+  scissors: 'icon-scissors',
+  redpen: 'icon-red-pen',
 };
 
 export type IconSource = 'art' | 'arrows' | 'doodle';
 
-/** Which drawing to use for a power: art if the id exists, else a lettered doodle. 'arrows' is unused now. */
+/** Which drawing to use for a power: art if the id exists, else the procedural doodle (see powerGlyphs.ts). */
 export function resolveIcon(type: string, hasArt: (id: string) => boolean): { source: IconSource; id: string | null } {
   const id = (ICON_IDS as Record<string, string | null>)[type] ?? null;
   if (id && hasArt(id)) return { source: 'art', id };
@@ -33,6 +32,30 @@ export function resolveIcon(type: string, hasArt: (id: string) => boolean): { so
 
 export const BAD_POWERS: ReadonlySet<string> = new Set(['sharpener', 'scissors', 'redpen']);
 export const isBadPower = (type: string): boolean => BAD_POWERS.has(type);
+
+/** Ring colour of a capsule badge per category: ball blue, paddle green, utility gold, hazard red. */
+export const CATEGORY_COLORS: Record<PowerCategory, string> = {
+  ball: '#00E5FF',
+  paddle: '#39FF14',
+  utility: '#F2B705',
+  hazard: '#FF3B5C',
+};
+
+export function categoryColor(type: string): string {
+  const cat = (POWER_CATEGORY as Record<string, PowerCategory | undefined>)[type];
+  return CATEGORY_COLORS[cat ?? 'ball'];
+}
+
+/** Highlighter trail colour behind a ball for the active ball effects. */
+export const TRAIL_COLORS = { highlighter: '#39FF14', crumpled: '#8A8D93', plane: '#00E5FF', redpen: '#FF3B5C', none: '#FFE600' } as const;
+
+export function trailColor(eff: Partial<Record<string, number>>): { color: string; alpha: number } {
+  if (eff.highlighter !== undefined) return { color: TRAIL_COLORS.highlighter, alpha: 0.42 };
+  if (eff.redpen !== undefined) return { color: TRAIL_COLORS.redpen, alpha: 0.42 };
+  if (eff.plane !== undefined) return { color: TRAIL_COLORS.plane, alpha: 0.42 };
+  if (eff.crumpled !== undefined) return { color: TRAIL_COLORS.crumpled, alpha: 0.35 };
+  return { color: TRAIL_COLORS.none, alpha: 0.28 };
+}
 
 export const POWER_NAMES: Record<PowerType, string> = {
   photocopy: 'Photocopy!',
@@ -117,6 +140,18 @@ export function snapshotBalls(balls: readonly XY[], buf: XY[]): XY[] {
   }
   buf.length = balls.length;
   return buf;
+}
+
+/** Floating combo label for a multiplier: 1.5 -> "×1.5", 2 -> "×2". */
+export const comboLabel = (value: number): string => `×${Number.isInteger(value) ? value : value.toFixed(1)}`;
+
+/** HUD combo text ("×2.0 COMBO"); empty at 1x so the HUD hides it. */
+export const comboHudText = (mul: number): string => (mul > 1 ? `×${mul.toFixed(1)} COMBO` : '');
+
+/** Visual brick tilt (radians) of a loose metal clip, shaking slightly; 0 while it is still firmly fixed. */
+export function clipTilt(streakHits: number, time: number, id: number): number {
+  if (streakHits < CONFIG.clipLooseHits) return 0;
+  return 0.07 + Math.sin(time * 42 + id * 1.7) * 0.025;
 }
 
 /** Fraction of an effect's duration still left, 0..1. */

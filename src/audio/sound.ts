@@ -13,6 +13,7 @@ export interface PlayOpts {
 export const SOUND_IDS = [
   'paddle', 'wall', 'brick', 'break', 'steel', 'explode', 'launch', 'powerup', 'powerdown', 'laser',
   'eraser', 'lifelost', 'won', 'gameover', 'regen', 'reveal', 'net', 'click', 'shred',
+  'staple', 'cliploose', 'clippop', 'snip', 'splash', 'paperclip', 'goldstar', 'redpen', 'combo',
 ] as const;
 
 /** Bounces are quieter than breaks. */
@@ -20,6 +21,8 @@ export const BASE_VOLUME: Record<string, number> = {
   wall: 0.35, brick: 0.45, paddle: 0.6, break: 0.8, steel: 0.55, explode: 1, launch: 0.5, powerup: 0.8,
   powerdown: 0.8, laser: 0.45, eraser: 0.7, lifelost: 1, won: 1, gameover: 1, regen: 0.5, reveal: 0.5,
   net: 0.7, click: 0.5, shred: 0.5,
+  staple: 0.5, cliploose: 0.5, clippop: 0.7, snip: 0.8, splash: 0.6, paperclip: 0.7, goldstar: 0.9, redpen: 0.8,
+  combo: 0.6,
 };
 
 /** Synth building blocks writing into a destination node (the per-voice gain/pan chain). */
@@ -49,6 +52,15 @@ const RECIPES: Record<string, { dur: number; run: (s: Synth) => void }> = {
   net: { dur: 0.2, run: (s) => { s.noise(0, 0.18, 1200, 0.3, 1); s.tone(0, 500, 0.12, 'sine', 0.3, 800); } },
   click: { dur: 0.05, run: (s) => { s.tone(0, 1200, 0.03, 'square', 0.25, 800); s.noise(0, 0.015, 3000, 0.2, 2); } },
   shred: { dur: 0.12, run: (s) => { s.noise(0, 0.1, 3200, 0.4, 0.8); } },
+  staple: { dur: 0.08, run: (s) => { s.tone(0, 1800, 0.05, 'square', 0.2, 900); s.noise(0, 0.02, 4500, 0.3, 2); } },
+  cliploose: { dur: 0.18, run: (s) => { s.tone(0, 1500, 0.04, 'triangle', 0.3, 1100); s.tone(0.07, 1300, 0.04, 'triangle', 0.3, 1000); s.noise(0.1, 0.04, 3000, 0.15, 2); } },
+  clippop: { dur: 0.25, run: (s) => { s.tone(0, 600, 0.1, 'sine', 0.7, 1500); s.noise(0, 0.05, 3500, 0.35, 1.5); s.tone(0.1, 2200, 0.1, 'triangle', 0.25, 800); } },
+  snip: { dur: 0.16, run: (s) => { s.noise(0, 0.03, 5000, 0.5, 3); s.tone(0, 2400, 0.04, 'sawtooth', 0.15, 1800); s.noise(0.07, 0.04, 5200, 0.5, 3); } },
+  splash: { dur: 0.25, run: (s) => { s.noise(0, 0.22, 1600, 0.4, 0.6); s.tone(0, 500, 0.15, 'sine', 0.25, 250); } },
+  paperclip: { dur: 0.3, run: (s) => { s.tone(0, 1800, 0.1, 'sine', 0.35); s.tone(0.08, 2400, 0.18, 'sine', 0.3); s.noise(0, 0.03, 4000, 0.2, 2); } },
+  goldstar: { dur: 0.5, run: (s) => { [783.99, 1046.5, 1318.5, 1568].forEach((f, i) => s.tone(i * 0.07, f, 0.3, 'triangle', 0.4)); } },
+  redpen: { dur: 0.3, run: (s) => { s.tone(0, 700, 0.25, 'sawtooth', 0.2, 1400); s.noise(0, 0.12, 2500, 0.25, 1); } },
+  combo: { dur: 0.2, run: (s) => { s.tone(0, 660, 0.08, 'triangle', 0.4); s.tone(0.07, 990, 0.12, 'triangle', 0.4); } },
 };
 
 type Manifest = Record<string, string[]>;

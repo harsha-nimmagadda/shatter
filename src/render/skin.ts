@@ -24,13 +24,13 @@ export interface Skin {
 }
 
 export const NOTEBOOK_SKIN: Skin = {
-  paper: '#fbf6e6',
-  rule: '#7aa6d8',
-  margin: '#d9605a',
+  paper: '#F9F6EE',
+  rule: '#DCE8F5',
+  margin: '#F2C6C6',
   ink: '#2b2b2b',
   graphite: '#4a4a4f',
-  brick: { 1: '#f0b04e', 2: '#6fb0dc', 3: '#e26f6f' },
-  steel: '#8b9099',
+  brick: { 1: '#5A5E66', 2: '#2B5B9E', 3: '#1E1E22' },
+  steel: '#9EA4AD',
   paddle: '#3b3b40',
   ball: '#33343a',
   eraser: '#e9a3a0',

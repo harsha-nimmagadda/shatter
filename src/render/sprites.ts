@@ -17,7 +17,7 @@ import {
 } from './sketch';
 import { pickIndex, textureWindow } from './artLayout';
 import { sourceSize } from './assets';
-import { texturePattern, type Skin, type TextureKey } from './skin';
+import type { Skin } from './skin';
 
 export const BRICK_PAD = 5;
 export const PADDLE_PAD = 6;
@@ -41,33 +41,6 @@ export function brickColor(skin: Skin, kind: 'normal' | 'steel' | BrickType, hp:
   if (kind === 'steel') return skin.steel;
   if (kind === 'explosive') return EXPLOSIVE_FILL;
   return skin.brick[hp >= 3 ? 3 : hp <= 1 ? 1 : 2];
-}
-
-function brickFillId(kind: 'normal' | 'steel', hp: number): string {
-  if (kind === 'steel') return 'fill-steel';
-  return hp >= 3 ? 'fill-brick3' : hp <= 1 ? 'fill-brick1' : 'fill-brick2';
-}
-
-function brickTexture(kind: 'normal' | 'steel', hp: number): TextureKey {
-  if (kind === 'steel') return 'steel';
-  return hp >= 3 ? 'brick3' : hp <= 1 ? 'brick1' : 'brick2';
-}
-
-/** Fills the polygon with the skin texture if there is one; returns whether it did. */
-function fillTextured(ctx: CanvasRenderingContext2D, skin: Skin, key: TextureKey, poly: Pt[]): boolean {
-  const pat = texturePattern(ctx, skin, key);
-  if (!pat) return false;
-  ctx.save();
-  tracePolygon(ctx, poly);
-  ctx.clip();
-  ctx.fillStyle = pat;
-  const b = poly.reduce(
-    (m, p) => ({ x0: Math.min(m.x0, p.x), y0: Math.min(m.y0, p.y), x1: Math.max(m.x1, p.x), y1: Math.max(m.y1, p.y) }),
-    { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity },
-  );
-  ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-  ctx.restore();
-  return true;
 }
 
 /**
@@ -116,65 +89,172 @@ function smiley(ctx: CanvasRenderingContext2D, skin: Skin, cx: number, cy: numbe
   );
 }
 
+export const HIGHLIGHT_GREEN = '#39FF14';
+const TAB_COLORS = ['#e8d27a', '#f2b9b0', '#a9d6c2'];
+
+/** Faint crease / watermark of an unrevealed Invisible Ink brick (the caller draws it at low alpha). */
+export function renderHiddenCrease(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, variant: number, seed: number): void {
+  const rng = createRng(mixSeed(seed, variant + 1, 4));
+  ctx.setLineDash([5, 4]);
+  strokeRoughRect(ctx, 1, 1, w - 2, h - 2, rng, skin.graphite, 1.3);
+  ctx.setLineDash([]);
+  // A fold crease and a tiny "?" watermark.
+  strokePath(ctx, [{ x: w * 0.12, y: h * 0.78 }, { x: w * 0.5, y: h * 0.5 }, { x: w * 0.88, y: h * 0.62 }], rng, skin.graphite, 1.1, 0.8);
+  ctx.font = `${Math.round(h * 0.6)}px ${skin.font}`;
+  ctx.fillStyle = skin.graphite;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = 0.7;
+  ctx.fillText('?', w * 0.5, h * 0.54);
+  ctx.globalAlpha = 1;
+}
+
+/** Progressive crack and tear marks: the more hp lost, the more lines (plus a paper-coloured tear edge). */
+function damageMarks(ctx: CanvasRenderingContext2D, skin: Skin, b: BrickSpec, w: number, h: number, dark: boolean): void {
+  const lost = b.maxHp - b.hp;
+  if (lost <= 0) return;
+  const cr = createRng(mixSeed(b.seed, 0, 3));
+  const ink = dark ? skin.paper : skin.ink;
+  for (const c of crackPaths(2, 2, w - 4, h - 4, cr, lost)) {
+    strokePath(ctx, c, cr, ink, 1.4);
+    if (!dark) strokePath(ctx, c.map((p) => ({ x: p.x + 1.2, y: p.y + 0.8 })), cr, skin.paper, 1, 0.55);
+  }
+}
+
 /** One boil variant of a brick. Identity (hatch angle, doodle, cracks) comes from the seed only. */
 export function renderBrick(ctx: CanvasRenderingContext2D, skin: Skin, b: BrickSpec, variant: number): void {
   const id = createRng(mixSeed(b.seed, 0, 1));
   const rng = createRng(mixSeed(b.seed, variant + 1, 2));
   const steel = b.kind === 'steel';
   const type: BrickType = b.type ?? b.kind;
-  const color = brickColor(skin, type, b.hp);
   const { w, h } = b;
-
-  const poly = roughPolygon(1, 1, w - 2, h - 2, rng, 1);
-  if (!fillArt(ctx, skin, type === 'explosive' ? 'fill-brick3' : brickFillId(b.kind, b.hp), b.seed, w, h, poly) && !fillTextured(ctx, skin, brickTexture(b.kind, b.hp), poly)) {
-    ctx.globalAlpha = steel ? 0.5 : 0.3;
-    ctx.fillStyle = color;
-    tracePolygon(ctx, poly);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    const sign = id.next() < 0.5 ? 1 : -1;
-    const angle = sign * id.range(0.5, 1.15);
-    const gap = id.range(3.2, 4.6) * (steel ? 0.8 : 1);
-    if (id.next() < 0.3 && !steel) {
-      strokePath(ctx, scribblePoints(2, 2, w - 4, h - 4, rng, gap + 1), rng, color, 1.6);
-    } else {
-      strokeSegs(ctx, hatchLines(2, 2, w - 4, h - 4, angle, gap, rng), rng, color, steel ? 1.5 : 1.7);
-    }
-    if (steel) strokeSegs(ctx, hatchLines(2, 2, w - 4, h - 4, -angle, gap * 1.6, rng), rng, skin.ink, 1.1, 0.7);
+  if (steel) {
+    renderClip(ctx, skin, w, h, rng);
+    return;
   }
+  // Ink tier by max hp: pencil graphite, ballpoint blue, black marker.
+  const tier = b.maxHp >= 3 ? 3 : b.maxHp <= 1 ? 1 : 2;
+  const color = skin.brick[tier];
+  const poly = roughPolygon(1, 1, w - 2, h - 2, rng, 1);
 
   if (type === 'explosive') {
+    if (!fillArt(ctx, skin, 'fill-brick3', b.seed, w, h, poly)) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = EXPLOSIVE_FILL;
+      tracePolygon(ctx, poly);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     ctx.globalAlpha = 0.4;
     ctx.fillStyle = EXPLOSIVE_FILL;
     tracePolygon(ctx, poly);
     ctx.fill();
     ctx.globalAlpha = 1;
-  }
-
-  // Regenerating bricks get a dashed outline.
-  if (type === 'regen') ctx.setLineDash([6, 3.5]);
-  strokeRoughRect(ctx, 0, 0, w, h, rng, skin.ink, 1.9);
-  if (type === 'regen') ctx.setLineDash([]);
-
-  if (steel) {
-    // Rivets.
-    ctx.fillStyle = skin.ink;
-    for (const rx of [5, w - 5]) {
-      ctx.beginPath();
-      ctx.arc(rx, h / 2, 1.3, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    strokeRoughRect(ctx, 0, 0, w, h, rng, skin.ink, 1.9);
+    if (b.hp < b.maxHp) damageMarks(ctx, skin, b, w, h, false);
+    bombDoodle(ctx, skin, w, h, rng);
     return;
   }
-  if (b.hp < b.maxHp) {
-    const cr = createRng(mixSeed(b.seed, 0, 3));
-    for (const c of crackPaths(2, 2, w - 4, h - 4, cr, b.maxHp - b.hp)) strokePath(ctx, c, cr, skin.ink, 1.3);
-  } else if (b.maxHp === 1 && type === 'normal' && id.next() < 0.2) {
+
+  // Revealed Invisible Ink: bright highlighter-green fill.
+  if (type === 'hidden') {
+    tracePolygon(ctx, poly);
+    ctx.fillStyle = HIGHLIGHT_GREEN;
+    ctx.globalAlpha = 0.6;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.save();
+    tracePolygon(ctx, poly);
+    ctx.clip();
+    strokeSegs(ctx, hatchLines(2, 2, w - 4, h - 4, 0.9, 5, rng), rng, '#1f9d0a', 1.2, 0.5);
+    ctx.restore();
+    strokeRoughRect(ctx, 0, 0, w, h, rng, skin.ink, 1.7);
+    return;
+  }
+
+  // Fill: pencil = light wash, pen = pale blue + diagonal hatching, marker = solid black.
+  ctx.save();
+  tracePolygon(ctx, poly);
+  ctx.clip();
+  if (type === 'moving') {
+    ctx.fillStyle = TAB_COLORS[(b.seed >>> 0) % TAB_COLORS.length];
+    ctx.fillRect(0, 0, w, h);
+  } else if (tier === 3) {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.92;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+    strokeSegs(ctx, hatchLines(2, 2, w - 4, h - 4, -0.8, 5, rng), rng, '#4a4a52', 1.1, 0.7);
+  } else if (tier === 2) {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.14;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+    strokeSegs(ctx, hatchLines(2, 2, w - 4, h - 4, 0.75, 3.6, rng), rng, color, 1.5, 0.85);
+  } else {
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.12;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+    if (id.next() < 0.3) strokePath(ctx, scribblePoints(2, 2, w - 4, h - 4, rng, 5.5), rng, color, 1.1, 0.7);
+    else strokeSegs(ctx, hatchLines(2, 2, w - 4, h - 4, id.range(0.5, 1.1), 6, rng), rng, color, 1.1, 0.6);
+  }
+  ctx.restore();
+
+  if (type === 'regen') ctx.setLineDash([6, 3.5]);
+  strokeRoughRect(ctx, 0, 0, w, h, rng, color, tier === 3 ? 3.2 : tier === 2 ? 2.2 : 1.8);
+  if (type === 'regen') ctx.setLineDash([]);
+
+  if (type === 'moving') {
+    // Paper index-tab: coloured tab strip on the right edge with a notch.
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(w - 7, 2, 5, h - 4);
+    ctx.globalAlpha = 1;
+    strokePath(ctx, [{ x: w - 8, y: 2 }, { x: w - 8, y: h - 2 }], rng, skin.ink, 1.1, 0.8);
+  }
+  damageMarks(ctx, skin, b, w, h, tier === 3);
+  if (b.hp === b.maxHp && b.maxHp === 1 && type === 'normal' && id.next() < 0.2) {
     smiley(ctx, skin, w * id.range(0.3, 0.7), h / 2, h * 0.2, rng);
   }
-  if (type === 'explosive') bombDoodle(ctx, skin, w, h, rng);
-  else if (type === 'moving') moveDoodle(ctx, skin, w, h, rng);
+  if (type === 'moving') moveDoodle(ctx, skin, w - 8, h, rng);
   else if (type === 'regen') regenDoodle(ctx, skin, w, h, rng);
+}
+
+/** Metal clip: silver bar with a drop shadow and two pin heads. */
+function renderClip(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, rng: ReturnType<typeof createRng>): void {
+  const body = roughPolygon(1, 1, w - 3, h - 3, rng, 0.6);
+  // Drop shadow.
+  ctx.save();
+  ctx.translate(2.2, 2.6);
+  tracePolygon(ctx, body);
+  ctx.fillStyle = '#000';
+  ctx.globalAlpha = 0.22;
+  ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  tracePolygon(ctx, body);
+  ctx.fillStyle = skin.steel;
+  ctx.fill();
+  ctx.save();
+  tracePolygon(ctx, body);
+  ctx.clip();
+  // Brushed highlight and a darker lower edge.
+  strokeSegs(ctx, [{ x1: 3, y1: h * 0.3, x2: w - 3, y2: h * 0.3 }], rng, '#d8dce2', 1.6, 0.9);
+  strokeSegs(ctx, [{ x1: 3, y1: h * 0.78, x2: w - 3, y2: h * 0.78 }], rng, '#6e747d', 1.2, 0.6);
+  ctx.restore();
+  strokeRoughRect(ctx, 0, 0, w - 1, h - 1, rng, skin.ink, 1.5);
+  for (const px of [6, w - 7]) {
+    ctx.beginPath();
+    ctx.arc(px, h / 2, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#5b6068';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(px - 0.6, h / 2 - 0.6, 0.9, 0, Math.PI * 2);
+    ctx.fillStyle = '#d8dce2';
+    ctx.fill();
+    strokePath(ctx, roughCirclePoints(px, h / 2, 2.6, rng, 0.05), rng, skin.ink, 1);
+  }
 }
 
 function bombDoodle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, rng: ReturnType<typeof createRng>): void {
@@ -241,9 +321,18 @@ function regenDoodle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: nu
   strokePath(ctx, [{ x: e.x - 1, y: e.y - 4 }, { x: e.x, y: e.y }, { x: e.x + 4, y: e.y - 1.5 }], rng, skin.ink, 1.5, 0.85);
 }
 
-export function renderPaddle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, variant: number): void {
-  const rng = createRng(mixSeed(w, variant + 1, 11));
-  const outline = roughRoundRectPoints(0, 0, w, h, h * 0.45, rng, 0.8);
+export type PaddleStyle = 'pencil' | 'ruler';
+
+export const PADDLE_JITTER = 0.35;
+
+/** Default paddle: a yellow pencil (sharpened tip on the right, pink eraser on the left). Ruler style = the ruler art. */
+export function renderPaddle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, variant: number, style: PaddleStyle = 'pencil'): void {
+  const rng = createRng(mixSeed(w, variant + 1, style === 'ruler' ? 11 : 12));
+  const outline = roughRoundRectPoints(0, 0, w, h, h * 0.45, rng, PADDLE_JITTER);
+  if (style === 'pencil') {
+    renderPencil(ctx, skin, w, h, rng, outline);
+    return;
+  }
   const rulers = skin.assets?.get('paddle') ?? [];
   const ruler = rulers.length ? rulers[pickIndex(w, rulers.length)] : undefined;
   if (ruler && sourceSize(ruler).w > 8) {
@@ -259,21 +348,67 @@ export function renderPaddle(ctx: CanvasRenderingContext2D, skin: Skin, w: numbe
     strokePath(ctx, outline, rng, skin.ink, 2.2);
     return;
   }
-  if (!fillTextured(ctx, skin, 'paddle', outline)) {
-    ctx.save();
-    tracePolygon(ctx, outline);
-    ctx.clip();
-    ctx.globalAlpha = 0.45;
-    ctx.fillStyle = skin.paddle;
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalAlpha = 1;
-    strokeSegs(ctx, hatchLines(0, 0, w, h, -0.8, 3, rng), rng, skin.paddle, 1.8);
-    strokeSegs(ctx, hatchLines(0, 0, w, h, 0.7, 4.5, rng), rng, skin.ink, 1.2, 0.6);
-    ctx.restore();
-  }
+  ctx.save();
+  tracePolygon(ctx, outline);
+  ctx.clip();
+  ctx.fillStyle = '#ecd08a';
+  ctx.fillRect(0, 0, w, h);
+  strokeSegs(ctx, hatchLines(0, 0, w, h, 0.7, 4.5, rng), rng, skin.ink, 0.8, 0.25);
+  ctx.restore();
   strokePath(ctx, outline, rng, skin.ink, 2.2);
-  const second = roughRoundRectPoints(0.6, 0.5, w - 1, h - 1, h * 0.45, rng, 1);
-  strokePath(ctx, second, rng, skin.ink, 1.4, 0.5);
+}
+
+function renderPencil(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, rng: ReturnType<typeof createRng>, outline: Pt[]): void {
+  const pencils = skin.assets?.get('paddle-pencil') ?? [];
+  const art = pencils.length ? pencils[0] : undefined;
+  ctx.save();
+  tracePolygon(ctx, outline);
+  ctx.clip();
+  if (art && sourceSize(art).w > 8) {
+    ctx.fillStyle = '#f2cf4a';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(art, -1, -1, w + 2, h + 2);
+    ctx.restore();
+    strokePath(ctx, outline, rng, skin.ink, 2);
+    return;
+  }
+  const tipW = Math.min(18, w * 0.22);
+  const eraW = Math.min(11, w * 0.14);
+  const ferW = 4;
+  const bodyX0 = eraW + ferW;
+  const bodyX1 = w - tipW;
+  ctx.fillStyle = '#f5cf3d';
+  ctx.fillRect(bodyX0, 0, bodyX1 - bodyX0, h);
+  // Darker stripe along the lower half plus a highlight line on top.
+  ctx.fillStyle = '#d9a91f';
+  ctx.fillRect(bodyX0, h * 0.62, bodyX1 - bodyX0, h * 0.38);
+  strokeSegs(ctx, [{ x1: bodyX0, y1: h * 0.28, x2: bodyX1, y2: h * 0.28 }], rng, '#fff3a6', 1.5, 0.9);
+  // Wood cone and graphite point.
+  ctx.beginPath();
+  ctx.moveTo(bodyX1, 0);
+  ctx.lineTo(w, h / 2);
+  ctx.lineTo(bodyX1, h);
+  ctx.closePath();
+  ctx.fillStyle = '#efcf9a';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(w - tipW * 0.38, h * 0.3);
+  ctx.lineTo(w, h / 2);
+  ctx.lineTo(w - tipW * 0.38, h * 0.7);
+  ctx.closePath();
+  ctx.fillStyle = skin.graphite;
+  ctx.fill();
+  // Ferrule and eraser.
+  ctx.fillStyle = '#b4b9c1';
+  ctx.fillRect(eraW, 0, ferW, h);
+  ctx.fillStyle = '#f2a0a8';
+  ctx.fillRect(0, 0, eraW, h);
+  ctx.restore();
+  strokePath(ctx, outline, rng, skin.ink, 2);
+  strokePath(ctx, [{ x: bodyX1, y: 1 }, { x: bodyX1 + 1, y: h / 2 }, { x: bodyX1, y: h - 1 }], rng, skin.ink, 1.2, 0.7);
+  strokePath(ctx, [{ x: eraW, y: 1 }, { x: eraW, y: h - 1 }], rng, skin.ink, 1, 0.7);
+  strokePath(ctx, [{ x: eraW + ferW, y: 1 }, { x: eraW + ferW, y: h - 1 }], rng, skin.ink, 1, 0.7);
 }
 
 /** Scribbled graphite ball; content box is 2r x 2r. */
@@ -298,7 +433,7 @@ export function renderBall(ctx: CanvasRenderingContext2D, skin: Skin, r: number,
     ctx.drawImage(img, -bs / 2, -bs / 2, bs, bs);
     ctx.drawImage(img, -bs / 2, -bs / 2, bs, bs);
     ctx.restore();
-    strokePath(ctx, roughCirclePoints(r, r, r * 0.95, rng, 0.05), rng, skin.ink, 1.6, 0.9);
+    strokePath(ctx, roughCirclePoints(r, r, r * 0.95, rng, 0.02), rng, skin.ink, 1.6, 0.9);
     return;
   }
   ctx.save();
@@ -312,8 +447,8 @@ export function renderBall(ctx: CanvasRenderingContext2D, skin: Skin, r: number,
   strokePath(ctx, scribblePoints(0, 0, d, d, rng, 2.4), rng, skin.ball, 1.5);
   strokeSegs(ctx, hatchLines(0, 0, d, d, 0.9, 2.6, rng), rng, skin.graphite, 1.1, 0.8);
   ctx.restore();
-  strokePath(ctx, roughCirclePoints(r, r, r * 0.95, rng, 0.05), rng, skin.ink, 1.7);
-  strokePath(ctx, roughCirclePoints(r, r, r * 0.9, rng, 0.07), rng, skin.ink, 1.1, 0.6);
+  strokePath(ctx, roughCirclePoints(r, r, r * 0.95, rng, 0.02), rng, skin.ink, 1.7);
+  strokePath(ctx, roughCirclePoints(r, r, r * 0.9, rng, 0.03), rng, skin.ink, 1.1, 0.6);
 }
 
 /** Message text with a hand-drawn underline; content box is w x h. */

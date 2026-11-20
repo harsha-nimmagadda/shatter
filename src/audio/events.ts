@@ -1,5 +1,4 @@
 import { CONFIG, type GameEvent, type World } from '../engine';
-import { isBadPower } from '../render/powerVisuals';
 
 export interface SoundCall {
   id: string;
@@ -8,12 +7,31 @@ export interface SoundCall {
   volume?: number;
 }
 
+/** Catch sounds for powers that have their own SFX; other hazards use 'powerdown', the rest 'powerup'. */
+export const POWER_SOUND: Partial<Record<string, string>> = {
+  scissors: 'snip',
+  paperclip: 'paperclip',
+  goldstar: 'goldstar',
+  redpen: 'redpen',
+};
+const HAZARDS: ReadonlySet<string> = new Set(['sharpener', 'scissors', 'redpen']);
+
+export function powerSoundId(power: string | undefined): string {
+  if (!power) return 'powerup';
+  return POWER_SOUND[power] ?? (HAZARDS.has(power) ? 'powerdown' : 'powerup');
+}
+
 const ONE_TO_ONE: Partial<Record<GameEvent['type'], string>> = {
   wall: 'wall',
   paddle: 'paddle',
   explode: 'explode',
   launch: 'launch',
-  staple: 'laser', // TODO(render-revamp): dedicated staple / clip / combo SFX
+  staple: 'staple',
+  clipLoose: 'cliploose',
+  clipPop: 'clippop',
+  splash: 'splash',
+  extraLife: 'goldstar',
+  combo: 'combo',
   eraser: 'eraser',
   lifeLost: 'lifelost',
   gameover: 'gameover',
@@ -29,6 +47,7 @@ export function soundsForEvents(events: readonly GameEvent[], world?: Pick<World
   const broke = new Set<number>();
   for (const e of events) if (e.type === 'brickBreak' && e.brickId !== undefined) broke.add(e.brickId);
   let breaks = 0;
+  let gold = false;
   for (const e of events) {
     switch (e.type) {
       case 'brickHit': {
@@ -44,7 +63,18 @@ export function soundsForEvents(events: readonly GameEvent[], world?: Pick<World
         breaks++;
         break;
       case 'powerup':
-        out.push({ id: e.power && isBadPower(e.power) ? 'powerdown' : 'powerup', x: e.x });
+        {
+          const id = powerSoundId(e.power);
+          if (id === 'goldstar') {
+            if (gold) break;
+            gold = true;
+          }
+          out.push({ id, x: e.x });
+        }
+        break;
+      case 'extraLife':
+        if (!gold) out.push({ id: 'goldstar', x: e.x });
+        gold = true;
         break;
       default: {
         const id = ONE_TO_ONE[e.type];

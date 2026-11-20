@@ -1,140 +1,203 @@
 {
- "defaults": {
-  "negative": "music, melody, speech, voice, noise, hiss, reverb tail, low quality"
- },
- "sounds": [
-  {
-   "id": "paddle",
-   "prompt": "single pencil tapping a wooden desk, solid knock, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 100
+  "defaults": {
+    "negative": "music, melody, speech, voice, noise, hiss, reverb tail, low quality"
   },
-  {
-   "id": "wall",
-   "prompt": "single light pencil tap on paper, soft, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 200
-  },
-  {
-   "id": "brick",
-   "prompt": "single pencil tapping cardboard, hollow tick, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 300
-  },
-  {
-   "id": "break",
-   "prompt": "single quick paper tear, crisp rip, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 400
-  },
-  {
-   "id": "steel",
-   "prompt": "single metal ruler clink, bright ping on steel, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 500
-  },
-  {
-   "id": "explode",
-   "prompt": "single paper bag pop with crumple, burst, close mic, dry, short",
-   "seconds": 2,
-   "count": 4,
-   "seed": 600
-  },
-  {
-   "id": "launch",
-   "prompt": "single pencil flick whoosh, quick air swish, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 700
-  },
-  {
-   "id": "powerup",
-   "prompt": "single short bright marimba pluck, positive, rising, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 800
-  },
-  {
-   "id": "powerdown",
-   "prompt": "single low muted wooden thud, negative, dull, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 900
-  },
-  {
-   "id": "laser",
-   "prompt": "single fast pencil scribble zip, quick scratch, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 1000
-  },
-  {
-   "id": "eraser",
-   "prompt": "rubber eraser rubbing paper quickly, scrubbing, close mic, dry, short",
-   "seconds": 2,
-   "count": 4,
-   "seed": 1100
-  },
-  {
-   "id": "lifelost",
-   "prompt": "single paper being crumpled into a ball, close mic, dry, short",
-   "seconds": 2,
-   "count": 4,
-   "seed": 1200
-  },
-  {
-   "id": "won",
-   "prompt": "short cheerful xylophone jingle, bright, happy, dry",
-   "seconds": 4,
-   "count": 4,
-   "seed": 1300
-  },
-  {
-   "id": "gameover",
-   "prompt": "sad descending kazoo slide whistle, comical, dry",
-   "seconds": 3,
-   "count": 4,
-   "seed": 1400
-  },
-  {
-   "id": "regen",
-   "prompt": "quick pencil sketching on paper, fast strokes, close mic, dry, short",
-   "seconds": 2,
-   "count": 4,
-   "seed": 1500
-  },
-  {
-   "id": "reveal",
-   "prompt": "single page flip of a notebook, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 1600
-  },
-  {
-   "id": "net",
-   "prompt": "single sticky note peel, tacky unstick, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 1700
-  },
-  {
-   "id": "click",
-   "prompt": "single ballpoint pen click, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 1800
-  },
-  {
-   "id": "shred",
-   "prompt": "single small paper rip, tiny tear, close mic, dry, short",
-   "seconds": 1,
-   "count": 4,
-   "seed": 1900
-  }
- ]
+  "sounds": [
+    {
+      "id": "paddle",
+      "prompt": "single pencil tapping a wooden desk, solid knock, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 100
+    },
+    {
+      "id": "wall",
+      "prompt": "single light pencil tap on paper, soft, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 200
+    },
+    {
+      "id": "brick",
+      "prompt": "single pencil tapping cardboard, hollow tick, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 300
+    },
+    {
+      "id": "break",
+      "prompt": "single quick paper tear, crisp rip, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 400
+    },
+    {
+      "id": "steel",
+      "prompt": "single metal ruler clink, bright ping on steel, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 500
+    },
+    {
+      "id": "explode",
+      "prompt": "single paper bag pop with crumple, burst, close mic, dry, short",
+      "seconds": 2,
+      "count": 4,
+      "seed": 600
+    },
+    {
+      "id": "launch",
+      "prompt": "single pencil flick whoosh, quick air swish, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 700
+    },
+    {
+      "id": "powerup",
+      "prompt": "single short bright marimba pluck, positive, rising, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 800
+    },
+    {
+      "id": "powerdown",
+      "prompt": "single low muted wooden thud, negative, dull, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 900
+    },
+    {
+      "id": "laser",
+      "prompt": "single fast pencil scribble zip, quick scratch, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 1000
+    },
+    {
+      "id": "eraser",
+      "prompt": "rubber eraser rubbing paper quickly, scrubbing, close mic, dry, short",
+      "seconds": 2,
+      "count": 4,
+      "seed": 1100
+    },
+    {
+      "id": "lifelost",
+      "prompt": "single paper being crumpled into a ball, close mic, dry, short",
+      "seconds": 2,
+      "count": 4,
+      "seed": 1200
+    },
+    {
+      "id": "won",
+      "prompt": "short cheerful xylophone jingle, bright, happy, dry",
+      "seconds": 4,
+      "count": 4,
+      "seed": 1300
+    },
+    {
+      "id": "gameover",
+      "prompt": "sad descending kazoo slide whistle, comical, dry",
+      "seconds": 3,
+      "count": 4,
+      "seed": 1400
+    },
+    {
+      "id": "regen",
+      "prompt": "quick pencil sketching on paper, fast strokes, close mic, dry, short",
+      "seconds": 2,
+      "count": 4,
+      "seed": 1500
+    },
+    {
+      "id": "reveal",
+      "prompt": "single page flip of a notebook, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 1600
+    },
+    {
+      "id": "net",
+      "prompt": "single sticky note peel, tacky unstick, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 1700
+    },
+    {
+      "id": "click",
+      "prompt": "single ballpoint pen click, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 1800
+    },
+    {
+      "id": "shred",
+      "prompt": "single small paper rip, tiny tear, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 1900
+    },
+    {
+      "id": "staple",
+      "prompt": "single office stapler click, sharp metallic snap, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2000
+    },
+    {
+      "id": "cliploose",
+      "prompt": "single loose metal paper clip rattle, small wobble clatter, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2100
+    },
+    {
+      "id": "clippop",
+      "prompt": "single metal clip springing off paper, quick ping and pop, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2200
+    },
+    {
+      "id": "snip",
+      "prompt": "single scissors snip cutting paper, crisp, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2300
+    },
+    {
+      "id": "splash",
+      "prompt": "single wet marker squish splat, quick ink splash, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2400
+    },
+    {
+      "id": "paperclip",
+      "prompt": "single soft magnetic hum swoosh, gentle, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2500
+    },
+    {
+      "id": "goldstar",
+      "prompt": "single bright glockenspiel sparkle chime, happy, rising, dry, short",
+      "seconds": 2,
+      "count": 4,
+      "seed": 2600
+    },
+    {
+      "id": "redpen",
+      "prompt": "single fast pen scribble with rising whoosh, energetic, close mic, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2700
+    },
+    {
+      "id": "combo",
+      "prompt": "single short wooden xylophone note, bright, positive, dry, short",
+      "seconds": 1,
+      "count": 4,
+      "seed": 2800
+    }
+  ]
 }

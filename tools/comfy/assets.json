@@ -691,6 +691,176 @@
       "steps": 28,
       "cfg": 6,
       "seed": 41000
+    },
+    {
+      "id": "icon-photocopy",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a small office photocopier machine with three white balls coming out of its tray, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 40000
+    },
+    {
+      "id": "icon-highlighter",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a neon green highlighter marker pen with a chisel tip and a green ink splash, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 41000
+    },
+    {
+      "id": "icon-correction-tape",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a small handheld correction tape dispenser with a strip of white tape, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 42000
+    },
+    {
+      "id": "icon-glue-stick",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a glue stick tube with the cap off and a drip of clear glue, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 43000
+    },
+    {
+      "id": "icon-stapler",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a grey office stapler seen from the side with one staple flying out, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 44000
+    },
+    {
+      "id": "icon-gold-star",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a shiny gold star sticker with a happy smiling face, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 45000
+    },
+    {
+      "id": "icon-paperclip",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a silver metal paperclip with small curved magnet motion lines around it, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 46000
+    },
+    {
+      "id": "icon-scissors",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a pair of school scissors with orange handles, blades open, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 47000
+    },
+    {
+      "id": "icon-red-pen",
+      "group": "icon",
+      "prompt": "doodle, doodleredm, a single icon of a red ballpoint pen with a red ink splat at its tip, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1024,
+      "height": 1024,
+      "count": 4,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 48000
+    },
+    {
+      "id": "paddle-pencil",
+      "group": "paddle",
+      "prompt": "doodle, doodleredm, a single hand-drawn yellow wooden pencil lying horizontally seen from the side, sharpened tip on the right, pink eraser on the left, pencil and ink doodle, thick black ink outline, centred, lots of white space, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+      "loras": [
+        {
+          "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+          "strength": 0.8
+        }
+      ],
+      "width": 1344,
+      "height": 768,
+      "count": 6,
+      "steps": 28,
+      "cfg": 6,
+      "seed": 50000
     }
   ]
 }

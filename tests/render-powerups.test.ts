@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { POWER_TYPES } from '../src/engine';
+import { POWER_CATEGORY, POWER_TYPES } from '../src/engine';
 import {
   BAD_POWERS,
+  CATEGORY_COLORS,
   FLOAT_LIFE,
   ICON_IDS,
   POWER_NAMES,
   ballRenderPos,
+  categoryColor,
+  clipTilt,
+  comboHudText,
+  comboLabel,
   floatTextState,
   isBadPower,
   lerpTowards,
   powerName,
   resolveIcon,
   snapshotBalls,
+  trailColor,
 } from '../src/render/powerVisuals';
 import manifest from '../public/assets/world1/manifest.json';
 
@@ -19,15 +25,32 @@ describe('icon mapping', () => {
   it('covers every engine power type', () => {
     for (const t of POWER_TYPES) expect(t in ICON_IDS, t).toBe(true);
   });
-  it('maps to ids that exist in the manifest (except the procedural ones)', () => {
-    for (const t of POWER_TYPES) {
-      const id = ICON_IDS[t];
-      if (id === null) expect(['highlighter', 'paperclip']).toContain(t);
-      else expect(Object.keys(manifest)).toContain(id);
+  it('uses the revamp manifest ids', () => {
+    expect(ICON_IDS).toMatchObject({
+      photocopy: 'icon-photocopy',
+      highlighter: 'icon-highlighter',
+      correction: 'icon-correction-tape',
+      gluestick: 'icon-glue-stick',
+      stapler: 'icon-stapler',
+      goldstar: 'icon-gold-star',
+      paperclip: 'icon-paperclip',
+      scissors: 'icon-scissors',
+      redpen: 'icon-red-pen',
+      crumpled: 'icon-crumpled',
+      plane: 'icon-paper-plane',
+      ruler: 'icon-ruler',
+      eraser: 'icon-eraser',
+      stickynote: 'icon-sticky-note',
+      sharpener: 'icon-sharpener',
+    });
+  });
+  it('kept icons exist in the manifest (new ones arrive with the generated art)', () => {
+    for (const t of ['crumpled', 'plane', 'ruler', 'eraser', 'stickynote', 'sharpener'] as const) {
+      expect(Object.keys(manifest)).toContain(ICON_IDS[t]);
     }
   });
   it('falls back when art is missing, and never throws on unknown types', () => {
-    expect(resolveIcon('stapler', () => true)).toEqual({ source: 'art', id: 'icon-laser' });
+    expect(resolveIcon('stapler', () => true)).toEqual({ source: 'art', id: 'icon-stapler' });
     expect(resolveIcon('stapler', () => false).source).toBe('doodle');
     expect(resolveIcon('nope', () => true).source).toBe('doodle');
   });
@@ -106,5 +129,41 @@ describe('ball interpolation', () => {
     expect(buf).toHaveLength(1);
     expect(buf[0]).toBe(first);
     expect(buf[0]).toEqual({ x: 9, y: 9 });
+  });
+});
+
+describe('category colours', () => {
+  it('matches the spec per category', () => {
+    expect(CATEGORY_COLORS).toEqual({ ball: '#00E5FF', paddle: '#39FF14', utility: '#F2B705', hazard: '#FF3B5C' });
+    for (const t of POWER_TYPES) expect(categoryColor(t)).toBe(CATEGORY_COLORS[POWER_CATEGORY[t]]);
+    expect(categoryColor('redpen')).toBe('#FF3B5C');
+    expect(categoryColor('ruler')).toBe('#39FF14');
+    expect(categoryColor('zzz')).toBe('#00E5FF');
+  });
+});
+
+describe('ball trail tint', () => {
+  it('follows the active ball power', () => {
+    expect(trailColor({}).color).toBe('#FFE600');
+    expect(trailColor({ highlighter: 3 }).color).toBe('#39FF14');
+    expect(trailColor({ plane: 3 }).color).toBe('#00E5FF');
+    expect(trailColor({ redpen: 3 }).color).toBe('#FF3B5C');
+    expect(trailColor({ crumpled: 3 }).color).toBe('#8A8D93');
+    expect(trailColor({}).alpha).toBeLessThan(trailColor({ plane: 1 }).alpha);
+  });
+});
+
+describe('clip / combo helpers', () => {
+  it('tilts a clip only once it is loose', () => {
+    expect(clipTilt(2, 1, 5)).toBe(0);
+    expect(Math.abs(clipTilt(3, 1, 5))).toBeGreaterThan(0.03);
+    expect(Math.abs(clipTilt(5, 0.3, 9))).toBeLessThan(0.15);
+  });
+  it('formats combo text', () => {
+    expect(comboLabel(1.5)).toBe('×1.5');
+    expect(comboLabel(2)).toBe('×2');
+    expect(comboLabel(3)).toBe('×3');
+    expect(comboHudText(1)).toBe('');
+    expect(comboHudText(2)).toBe('×2.0 COMBO');
   });
 });

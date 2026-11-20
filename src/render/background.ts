@@ -100,11 +100,11 @@ export class Background {
 
     // Ruled lines.
     for (let y = 32; y < H; y += 32) {
-      strokePath(g, wobblyLinePoints(-4, y, W + 4, y, rng, { jitter: 0.002, maxJitter: 1.4, overshoot: 0, segLen: 60 }), rng, s.rule, 1.2, 0.5);
+      strokePath(g, wobblyLinePoints(-4, y, W + 4, y, rng, { jitter: 0.002, maxJitter: 1.4, overshoot: 0, segLen: 60 }), rng, s.rule, 1.3, 1);
     }
     // Double red margin.
     for (const mx of [58, 64]) {
-      strokePath(g, wobblyLinePoints(mx, -6, mx + 1, H + 6, rng, { jitter: 0.002, maxJitter: 1.6, overshoot: 0, segLen: 80 }), rng, s.margin, 1.4, 0.6);
+      strokePath(g, wobblyLinePoints(mx, -6, mx + 1, H + 6, rng, { jitter: 0.002, maxJitter: 1.6, overshoot: 0, segLen: 80 }), rng, s.margin, 1.5, 1);
     }
     // Punched holes.
     for (const hy of [180, 480, 780]) {

@@ -62,8 +62,8 @@ export interface World {
 export interface Input {
   /** Desired paddle centre in logical units; null = no change. */
   paddleX: number | null;
-  /** Keyboard / gamepad direction. */
-  moveDir: -1 | 0 | 1;
+  /** Keyboard / gamepad direction, analog in [-1, 1]. */
+  moveAxis: number;
   /** True only on the step the button was pressed. */
   fire: boolean;
 }

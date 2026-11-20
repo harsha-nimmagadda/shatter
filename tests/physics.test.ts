@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { CONFIG, LEVEL_1, createWorld, drainEvents, step, type Brick, type Input, type World } from '../src/engine';
 
 const DT = 1 / 120;
-const NONE: Input = { paddleX: null, moveDir: 0, fire: false };
+const NONE: Input = { paddleX: null, moveAxis: 0, fire: false };
 const FIRE: Input = { ...NONE, fire: true };
 
 function brick(id: number, x: number, y: number, hp = 3, kind: 'normal' | 'steel' = 'normal'): Brick {
@@ -128,7 +128,7 @@ describe('serve and lives', () => {
 
   it('paddle moves by keyboard and stays inside walls', () => {
     const w = createWorld(LEVEL_1);
-    step(w, { ...NONE, moveDir: -1 }, 1);
+    step(w, { ...NONE, moveAxis: -1 }, 1);
     expect(w.paddle.x).toBe(CONFIG.paddleW / 2);
     step(w, { ...NONE, paddleX: 5000 }, 1);
     expect(w.paddle.x).toBe(CONFIG.width - CONFIG.paddleW / 2);
@@ -152,7 +152,7 @@ describe('serve and lives', () => {
     expect(w.status).toBe('gameover');
     expect(w.events.map((e) => e.type)).toEqual(expect.arrayContaining(['lifeLost', 'gameover']));
     const x = w.paddle.x;
-    step(w, { ...FIRE, moveDir: 1 }, DT);
+    step(w, { ...FIRE, moveAxis: 1 }, DT);
     expect(w.status).toBe('gameover');
     expect(w.paddle.x).toBeGreaterThan(x);
   });
@@ -192,7 +192,7 @@ describe('determinism and events', () => {
     for (let i = 0; i < 4000; i++) {
       const input: Input = {
         paddleX: 270 + 200 * Math.sin(i / 90),
-        moveDir: 0,
+        moveAxis: 0,
         fire: i % 300 === 0,
       };
       step(w, input, DT);

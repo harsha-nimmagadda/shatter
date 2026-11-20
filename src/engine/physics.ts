@@ -30,8 +30,8 @@ export function step(world: World, input: Input, dt: number): void {
 
 function movePaddle(w: World, input: Input, dt: number): void {
   const p = w.paddle;
-  if (input.moveDir !== 0) {
-    p.x += input.moveDir * C.paddleKeySpeed * dt;
+  if (input.moveAxis !== 0) {
+    p.x += input.moveAxis * C.paddleKeySpeed * dt;
   } else if (input.paddleX !== null) {
     const max = C.paddleMaxSpeed * dt;
     p.x += Math.max(-max, Math.min(max, input.paddleX - p.x));

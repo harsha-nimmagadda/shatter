@@ -1,5 +1,5 @@
 // Shatter service worker: network-first for pages, cache-first for other same-origin GETs.
-const CACHE = 'shatter-v1';
+const CACHE = 'shatter-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

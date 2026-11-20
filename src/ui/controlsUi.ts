@@ -11,6 +11,8 @@ export interface ControlsUi {
   togglePause(): void;
   /** Pause automatically if playing (focus loss). */
   autoPause(): void;
+  /** Swap the text title on the start overlay for the hand-lettered image (text stays if it is not an <img>). */
+  setTitleImage(img: CanvasImageSource): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -57,7 +59,8 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
 
   // ---- Start overlay ----
   const start = el('div', 'ui-overlay');
-  start.append(el('h1', undefined, 'Shatter'));
+  const startTitle = el('h1', undefined, 'Shatter');
+  start.append(startTitle);
   const startBtn = el('button', 'ui-btn big', 'Tap to start');
   start.append(startBtn);
   startBtn.addEventListener('click', async () => {
@@ -236,5 +239,16 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
       else showPause();
     },
     autoPause: showPause,
+    setTitleImage: (src) => {
+      if (!(src instanceof HTMLImageElement) || !src.src || !startTitle.isConnected) return;
+      const img = el('img', 'ui-title');
+      img.alt = 'Shatter';
+      img.draggable = false;
+      img.addEventListener('error', () => {
+        img.replaceWith(startTitle);
+      });
+      img.src = src.src;
+      startTitle.replaceWith(img);
+    },
   };
 }

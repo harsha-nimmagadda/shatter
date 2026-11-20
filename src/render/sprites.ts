@@ -14,6 +14,8 @@ import {
   wobblyLinePoints,
   type Pt,
 } from './sketch';
+import { pickIndex, textureWindow } from './artLayout';
+import { sourceSize } from './assets';
 import { texturePattern, type Skin, type TextureKey } from './skin';
 
 export const BRICK_PAD = 5;
@@ -35,6 +37,11 @@ export function brickColor(skin: Skin, kind: 'normal' | 'steel', hp: number): st
   return skin.brick[hp >= 3 ? 3 : hp <= 1 ? 1 : 2];
 }
 
+function brickFillId(kind: 'normal' | 'steel', hp: number): string {
+  if (kind === 'steel') return 'fill-steel';
+  return hp >= 3 ? 'fill-brick3' : hp <= 1 ? 'fill-brick1' : 'fill-brick2';
+}
+
 function brickTexture(kind: 'normal' | 'steel', hp: number): TextureKey {
   if (kind === 'steel') return 'steel';
   return hp >= 3 ? 'brick3' : hp <= 1 ? 'brick1' : 'brick2';
@@ -53,6 +60,31 @@ function fillTextured(ctx: CanvasRenderingContext2D, skin: Skin, key: TextureKey
     { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity },
   );
   ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+  ctx.restore();
+  return true;
+}
+
+/**
+ * Fills the polygon with a seeded window of a generated fill swatch: paper colour first (the sprite is
+ * opaque), then the swatch with 'multiply' so its white disappears. Only runs while building cached sprites.
+ */
+function fillArt(ctx: CanvasRenderingContext2D, skin: Skin, id: string, seed: number, w: number, h: number, poly: Pt[]): boolean {
+  const imgs = skin.assets?.get(id) ?? [];
+  if (!imgs.length) return false;
+  const img = imgs[pickIndex(seed, imgs.length)];
+  const size = sourceSize(img);
+  if (size.w < 8 || size.h < 8) return false;
+  const win = textureWindow(seed, size.w, size.h, 140, 70);
+  const k = (w + 4) / 140;
+  ctx.save();
+  tracePolygon(ctx, poly);
+  ctx.clip();
+  ctx.fillStyle = skin.paper;
+  ctx.fillRect(-2, -2, w + 4, h + 4);
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate((win.rot * Math.PI) / 2);
+  ctx.drawImage(img, win.sx, win.sy, win.sw, win.sh, (-win.sw * k) / 2, (-win.sh * k) / 2, win.sw * k, win.sh * k);
   ctx.restore();
   return true;
 }
@@ -87,7 +119,7 @@ export function renderBrick(ctx: CanvasRenderingContext2D, skin: Skin, b: BrickS
   const { w, h } = b;
 
   const poly = roughPolygon(1, 1, w - 2, h - 2, rng, 1);
-  if (!fillTextured(ctx, skin, brickTexture(b.kind, b.hp), poly)) {
+  if (!fillArt(ctx, skin, brickFillId(b.kind, b.hp), b.seed, w, h, poly) && !fillTextured(ctx, skin, brickTexture(b.kind, b.hp), poly)) {
     ctx.globalAlpha = steel ? 0.5 : 0.3;
     ctx.fillStyle = color;
     tracePolygon(ctx, poly);
@@ -127,6 +159,21 @@ export function renderBrick(ctx: CanvasRenderingContext2D, skin: Skin, b: BrickS
 export function renderPaddle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, variant: number): void {
   const rng = createRng(mixSeed(w, variant + 1, 11));
   const outline = roughRoundRectPoints(0, 0, w, h, h * 0.45, rng, 0.8);
+  const rulers = skin.assets?.get('paddle') ?? [];
+  const ruler = rulers.length ? rulers[pickIndex(w, rulers.length)] : undefined;
+  if (ruler && sourceSize(ruler).w > 8) {
+    ctx.save();
+    tracePolygon(ctx, outline);
+    ctx.clip();
+    // Warm wood base so the small ruler reads clearly against the paper.
+    ctx.fillStyle = '#e9c27a';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(ruler, -1, -1, w + 2, h + 2);
+    ctx.restore();
+    strokePath(ctx, outline, rng, skin.ink, 2.2);
+    return;
+  }
   if (!fillTextured(ctx, skin, 'paddle', outline)) {
     ctx.save();
     tracePolygon(ctx, outline);
@@ -148,6 +195,27 @@ export function renderPaddle(ctx: CanvasRenderingContext2D, skin: Skin, w: numbe
 export function renderBall(ctx: CanvasRenderingContext2D, skin: Skin, r: number, variant: number): void {
   const rng = createRng(mixSeed(Math.round(r * 10), variant + 1, 21));
   const d = r * 2;
+  const balls = skin.assets?.get('ball-graphite') ?? [];
+  if (balls.length && sourceSize(balls[0]).w > 8) {
+    // Same doodle for a given radius, nudged per boil variant so it still wobbles.
+    const img = balls[pickIndex(Math.round(r * 10), balls.length)];
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(r, r, r * 0.98, 0, Math.PI * 2);
+    ctx.clip();
+    // Mid-grey graphite base: the doodle alone shrinks to a faint grey at ball size.
+    ctx.fillStyle = '#8a8a8a';
+    ctx.fillRect(0, 0, d, d);
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.translate(r + rng.range(-0.4, 0.4), r + rng.range(-0.4, 0.4));
+    ctx.rotate((variant - 1) * 0.35 + rng.range(-0.08, 0.08));
+    const bs = d * 1.08;
+    ctx.drawImage(img, -bs / 2, -bs / 2, bs, bs);
+    ctx.drawImage(img, -bs / 2, -bs / 2, bs, bs);
+    ctx.restore();
+    strokePath(ctx, roughCirclePoints(r, r, r * 0.95, rng, 0.05), rng, skin.ink, 1.6, 0.9);
+    return;
+  }
   ctx.save();
   ctx.beginPath();
   ctx.arc(r, r, r * 0.95, 0, Math.PI * 2);

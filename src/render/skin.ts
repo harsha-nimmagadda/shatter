@@ -1,3 +1,5 @@
+import type { AssetSet } from './assets';
+
 export type TextureKey = 'brick1' | 'brick2' | 'brick3' | 'steel' | 'paddle' | 'paper';
 
 /** Everything the renderer needs to know about colours and styles; swap it to re-theme (or add textures). */
@@ -16,6 +18,8 @@ export interface Skin {
   eraser: string;
   font: string;
   /** When present, fills use a pattern from the image (clipped to the wobbly outline) instead of hatching. */
+  /** Generated hand-drawn art (drawn with 'multiply'; white is transparent). Absent = fully procedural look. */
+  assets?: AssetSet;
   textures?: Partial<Record<TextureKey, CanvasImageSource>>;
 }
 

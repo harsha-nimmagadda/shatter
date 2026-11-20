@@ -1,5 +1,7 @@
 import { CONFIG } from '../engine/config';
 import { createRng } from '../engine/rng';
+import { coverRect, pickIndex, placeMarginDoodles, type Rect } from './artLayout';
+import { sourceSize } from './assets';
 import { BoilCache, type Sprite } from './boil';
 import { roughCirclePoints, strokePath, strokeSegs, wobblyLinePoints, type Seg } from './sketch';
 import type { Skin } from './skin';
@@ -12,7 +14,55 @@ export class Background {
   private canvas: HTMLCanvasElement | null = null;
   private scale = 0;
 
+  private seed = 1;
+  private grid: Rect | null = null;
+
   constructor(private readonly skin: Skin) {}
+
+  /** Level-specific inputs (paper variant, doodle placement). Invalidates the cached page. */
+  setLayout(seed: number, grid: Rect | null): void {
+    this.seed = seed;
+    this.grid = grid;
+    this.canvas = null;
+  }
+
+  /** 3-5 seeded margin doodles with multiply + reduced alpha; returns false if there are no margin images. */
+  private drawMarginArt(g: CanvasRenderingContext2D): boolean {
+    const imgs: CanvasImageSource[] = [];
+    const byId = this.skin.assets?.byId ?? {};
+    for (const id of Object.keys(byId).sort()) if (id.startsWith('margin-')) imgs.push(...byId[id]);
+    if (!imgs.length) return false;
+    const forbidden: Rect[] = [
+      { x: 0, y: 0, w: W, h: CONFIG.topWall + 8 }, // HUD band
+      { x: 52, y: 0, w: 18, h: H }, // red margin lines
+      { x: 0, y: CONFIG.paddleY - 60, w: W, h: H - CONFIG.paddleY + 60 }, // paddle zone
+      ...[180, 480, 780].map((hy) => ({ x: 8, y: hy - 16, w: 32, h: 32 })), // punched holes
+      { x: 370, y: 705, w: 100, h: 110 }, // coffee ring
+    ];
+    if (this.grid) {
+      const m = 10;
+      forbidden.push({ x: this.grid.x - m, y: this.grid.y - m, w: this.grid.w + 2 * m, h: this.grid.h + 2 * m });
+    }
+    const count = 3 + (pickIndex(this.seed, 3) % 3);
+    const doodles = placeMarginDoodles({ seed: this.seed, count, imageCount: imgs.length, width: W, height: H, forbidden, leftStrip: [4, 50] });
+    g.save();
+    g.globalCompositeOperation = 'multiply';
+    g.globalAlpha = 0.7;
+    for (const d of doodles) {
+      const img = imgs[d.image];
+      const sz = sourceSize(img);
+      const k = d.size / Math.max(1, sz.w, sz.h);
+      const dw = sz.w * k;
+      const dh = sz.h * k;
+      g.save();
+      g.translate(d.x, d.y);
+      g.rotate(d.rot);
+      g.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+      g.restore();
+    }
+    g.restore();
+    return true;
+  }
 
   private build(scale: number): void {
     const s = this.skin;
@@ -26,9 +76,18 @@ export class Background {
 
     g.fillStyle = s.paper;
     g.fillRect(0, 0, W, H);
-    const tex = s.textures?.paper;
+    const papers = s.assets?.get('paper') ?? [];
+    const tex = papers.length ? papers[pickIndex(this.seed, papers.length)] : s.textures?.paper;
     if (tex) {
-      g.drawImage(tex, 0, 0, W, H);
+      // Paper art is drawn on white: multiply keeps the cream paper colour and adds only the grain.
+      const sz = sourceSize(tex);
+      const c = coverRect(sz.w, sz.h, W, H);
+      g.save();
+      g.globalCompositeOperation = 'multiply';
+      g.globalAlpha = 0.45; // full strength reads as dirty tan paper; keep just the grain
+      if (c.w > 0) g.drawImage(tex, c.x, c.y, c.w, c.h, 0, 0, W, H);
+      else g.drawImage(tex, 0, 0, W, H);
+      g.restore();
     } else {
       // Faint grain.
       for (let i = 0; i < 1400; i++) {
@@ -59,17 +118,19 @@ export class Background {
     const ring = roughCirclePoints(420, 760, 46, rng, 0.03);
     strokePath(g, ring, rng, 'rgba(150,100,50,0.12)', 6);
     strokePath(g, roughCirclePoints(421, 761, 44, rng, 0.04), rng, 'rgba(150,100,50,0.1)', 2);
-    // Tiny margin doodles: a star and a little flower.
-    const star: Seg[] = [];
-    for (let i = 0; i < 5; i++) {
-      const a1 = -Math.PI / 2 + (i * 4 * Math.PI) / 5;
-      const a2 = -Math.PI / 2 + ((i + 1) * 4 * Math.PI) / 5;
-      star.push({ x1: 28 + Math.cos(a1) * 8, y1: 330 + Math.sin(a1) * 8, x2: 28 + Math.cos(a2) * 8, y2: 330 + Math.sin(a2) * 8 });
-    }
-    strokeSegs(g, star, rng, 'rgba(60,70,120,0.55)', 1.1);
-    for (let i = 0; i < 5; i++) {
-      const a = (i * Math.PI * 2) / 5;
-      strokePath(g, roughCirclePoints(30 + Math.cos(a) * 5, 640 + Math.sin(a) * 5, 3.2, rng, 0.1), rng, 'rgba(60,70,120,0.5)', 1);
+    if (!this.drawMarginArt(g)) {
+      // Tiny margin doodles: a star and a little flower.
+      const star: Seg[] = [];
+      for (let i = 0; i < 5; i++) {
+        const a1 = -Math.PI / 2 + (i * 4 * Math.PI) / 5;
+        const a2 = -Math.PI / 2 + ((i + 1) * 4 * Math.PI) / 5;
+        star.push({ x1: 28 + Math.cos(a1) * 8, y1: 330 + Math.sin(a1) * 8, x2: 28 + Math.cos(a2) * 8, y2: 330 + Math.sin(a2) * 8 });
+      }
+      strokeSegs(g, star, rng, 'rgba(60,70,120,0.55)', 1.1);
+      for (let i = 0; i < 5; i++) {
+        const a = (i * Math.PI * 2) / 5;
+        strokePath(g, roughCirclePoints(30 + Math.cos(a) * 5, 640 + Math.sin(a) * 5, 3.2, rng, 0.1), rng, 'rgba(60,70,120,0.5)', 1);
+      }
     }
     g.globalAlpha = 1;
     this.canvas = c;

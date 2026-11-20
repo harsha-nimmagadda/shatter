@@ -116,6 +116,15 @@ body {
   text-decoration: underline wavy var(--red) 3px;
   text-underline-offset: 10px;
 }
+.ui-title {
+  display: block;
+  width: min(90vw, 520px);
+  height: auto;
+  mix-blend-mode: multiply;
+  transform: rotate(-2deg);
+  pointer-events: none;
+  user-select: none;
+}
 .ui-panel {
   display: flex;
   flex-direction: column;

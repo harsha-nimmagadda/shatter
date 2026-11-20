@@ -1,5 +1,6 @@
 import { CONFIG, type GameEvent, type World } from '../engine';
 import { Background, PlayFrame } from './background';
+import { bricksBounds } from './artLayout';
 import { BoilCache, type Sprite } from './boil';
 import { Particles } from './particles';
 import { Shake } from './shake';
@@ -62,6 +63,8 @@ export class Renderer {
   loadLevel(world: World): void {
     this.bricks.clear();
     for (const b of world.bricks) this.bricks.set(b.id, { kind: b.kind, color: brickColor(this.skin, b.kind, 1) });
+    const grid = bricksBounds(world.bricks);
+    this.bg.setLayout(world.bricks[0]?.seed ?? 1, grid);
     this.cache.clear();
     this.particles.clear();
     this.trailLen.fill(0);

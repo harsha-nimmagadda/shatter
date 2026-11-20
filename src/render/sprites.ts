@@ -1,4 +1,5 @@
 import { createRng } from '../engine/rng';
+import type { BrickType } from '../engine/state';
 import {
   crackPaths,
   hatchLines,
@@ -30,10 +31,15 @@ export interface BrickSpec {
   hp: number;
   maxHp: number;
   kind: 'normal' | 'steel';
+  /** Full brick type; when absent the coarse kind decides. */
+  type?: BrickType;
 }
 
-export function brickColor(skin: Skin, kind: 'normal' | 'steel', hp: number): string {
+export const EXPLOSIVE_FILL = '#e8602c';
+
+export function brickColor(skin: Skin, kind: 'normal' | 'steel' | BrickType, hp: number): string {
   if (kind === 'steel') return skin.steel;
+  if (kind === 'explosive') return EXPLOSIVE_FILL;
   return skin.brick[hp >= 3 ? 3 : hp <= 1 ? 1 : 2];
 }
 
@@ -115,11 +121,12 @@ export function renderBrick(ctx: CanvasRenderingContext2D, skin: Skin, b: BrickS
   const id = createRng(mixSeed(b.seed, 0, 1));
   const rng = createRng(mixSeed(b.seed, variant + 1, 2));
   const steel = b.kind === 'steel';
-  const color = brickColor(skin, b.kind, b.hp);
+  const type: BrickType = b.type ?? b.kind;
+  const color = brickColor(skin, type, b.hp);
   const { w, h } = b;
 
   const poly = roughPolygon(1, 1, w - 2, h - 2, rng, 1);
-  if (!fillArt(ctx, skin, brickFillId(b.kind, b.hp), b.seed, w, h, poly) && !fillTextured(ctx, skin, brickTexture(b.kind, b.hp), poly)) {
+  if (!fillArt(ctx, skin, type === 'explosive' ? 'fill-brick3' : brickFillId(b.kind, b.hp), b.seed, w, h, poly) && !fillTextured(ctx, skin, brickTexture(b.kind, b.hp), poly)) {
     ctx.globalAlpha = steel ? 0.5 : 0.3;
     ctx.fillStyle = color;
     tracePolygon(ctx, poly);
@@ -136,7 +143,18 @@ export function renderBrick(ctx: CanvasRenderingContext2D, skin: Skin, b: BrickS
     if (steel) strokeSegs(ctx, hatchLines(2, 2, w - 4, h - 4, -angle, gap * 1.6, rng), rng, skin.ink, 1.1, 0.7);
   }
 
+  if (type === 'explosive') {
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = EXPLOSIVE_FILL;
+    tracePolygon(ctx, poly);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Regenerating bricks get a dashed outline.
+  if (type === 'regen') ctx.setLineDash([6, 3.5]);
   strokeRoughRect(ctx, 0, 0, w, h, rng, skin.ink, 1.9);
+  if (type === 'regen') ctx.setLineDash([]);
 
   if (steel) {
     // Rivets.
@@ -151,9 +169,76 @@ export function renderBrick(ctx: CanvasRenderingContext2D, skin: Skin, b: BrickS
   if (b.hp < b.maxHp) {
     const cr = createRng(mixSeed(b.seed, 0, 3));
     for (const c of crackPaths(2, 2, w - 4, h - 4, cr, b.maxHp - b.hp)) strokePath(ctx, c, cr, skin.ink, 1.3);
-  } else if (b.maxHp === 1 && id.next() < 0.2) {
+  } else if (b.maxHp === 1 && type === 'normal' && id.next() < 0.2) {
     smiley(ctx, skin, w * id.range(0.3, 0.7), h / 2, h * 0.2, rng);
   }
+  if (type === 'explosive') bombDoodle(ctx, skin, w, h, rng);
+  else if (type === 'moving') moveDoodle(ctx, skin, w, h, rng);
+  else if (type === 'regen') regenDoodle(ctx, skin, w, h, rng);
+}
+
+function bombDoodle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, rng: ReturnType<typeof createRng>): void {
+  const cx = w / 2 - 2;
+  const cy = h / 2 + 2;
+  const r = h * 0.24;
+  const body = roughCirclePoints(cx, cy, r, rng, 0.05);
+  tracePolygon(ctx, body);
+  ctx.fillStyle = skin.ink;
+  ctx.globalAlpha = 0.88;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  // Fuse and sparks.
+  const fx = cx + r * 0.7;
+  const fy = cy - r * 0.8;
+  strokePath(ctx, [{ x: fx, y: fy }, { x: fx + 2.5, y: fy - 3 }, { x: fx + 1.5, y: fy - 5.5 }], rng, skin.ink, 1.4);
+  const sx = fx + 1.5;
+  const sy = fy - 5.5;
+  const sparks = [];
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + (i - 2) * 0.7;
+    sparks.push({ x1: sx + Math.cos(a) * 1.5, y1: sy + Math.sin(a) * 1.5, x2: sx + Math.cos(a) * 4.2, y2: sy + Math.sin(a) * 4.2 });
+  }
+  strokeSegs(ctx, sparks, rng, '#ffd23f', 1.3);
+  // "!" and a few spark ticks near the ends of the brick.
+  ctx.font = `${Math.round(h * 0.7)}px ${skin.font}`;
+  ctx.fillStyle = skin.ink;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('!', w * 0.8, h * 0.55);
+  strokeSegs(
+    ctx,
+    [
+      { x1: 4, y1: 5, x2: 8, y2: 8 },
+      { x1: 3, y1: 10, x2: 8, y2: 10.5 },
+      { x1: w - 4, y1: h - 5, x2: w - 8, y2: h - 8 },
+    ],
+    rng,
+    '#ffd23f',
+    1.2,
+  );
+}
+
+function moveDoodle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, rng: ReturnType<typeof createRng>): void {
+  const y = h / 2;
+  strokePath(ctx, [{ x: w * 0.28, y }, { x: w * 0.5, y: y + 0.6 }, { x: w * 0.72, y }], rng, skin.ink, 1.4, 0.8);
+  for (const sgn of [-1, 1]) {
+    const x = w / 2 + sgn * w * 0.22;
+    strokePath(ctx, [{ x: x - sgn * 3.5, y: y - 3.2 }, { x, y }, { x: x - sgn * 3.5, y: y + 3.2 }], rng, skin.ink, 1.4, 0.8);
+  }
+}
+
+function regenDoodle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, rng: ReturnType<typeof createRng>): void {
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = h * 0.24;
+  const pts = [];
+  for (let i = 0; i <= 10; i++) {
+    const a = -Math.PI / 2 + 0.5 + (i / 10) * (Math.PI * 1.55);
+    pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+  }
+  strokePath(ctx, pts, rng, skin.ink, 1.5, 0.85);
+  const e = pts[pts.length - 1];
+  strokePath(ctx, [{ x: e.x - 1, y: e.y - 4 }, { x: e.x, y: e.y }, { x: e.x + 4, y: e.y - 1.5 }], rng, skin.ink, 1.5, 0.85);
 }
 
 export function renderPaddle(ctx: CanvasRenderingContext2D, skin: Skin, w: number, h: number, variant: number): void {

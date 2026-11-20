@@ -2,11 +2,12 @@ import '@fontsource/patrick-hand/latin-400.css';
 import './style.css';
 import { View } from './game/view';
 import { Loop } from './game/loop';
-import { LEVEL_1, createWorld, drainEvents, step, type World } from './engine';
+import { LEVEL_1, POWER_TYPES, TEST_LEVELS, createWorld, drainEvents, step, type PowerType, type World } from './engine';
 import { Controls } from './input/controls';
 import { loadWorldAssets } from './render/assets';
 import { NOTEBOOK_SKIN } from './render/skin';
 import { Renderer } from './render/renderer';
+import { snapshotBalls, type XY } from './render/powerVisuals';
 import { createControlsUi } from './ui/controlsUi';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -18,12 +19,26 @@ const controls = new Controls(canvas, view);
 const ui = createControlsUi(document.getElementById('ui') as HTMLElement, controls);
 let lastFrame = performance.now();
 
-const newWorld = (): World => createWorld(LEVEL_1, { seed: (Date.now() ^ (Math.random() * 2 ** 32)) >>> 0 });
+// Debug URL params: ?level=<explosive|moving|regen|hidden|mixed>, ?power=<type>, ?drop=<0..1>
+const params = new URLSearchParams(location.search);
+const debugLevel = TEST_LEVELS[params.get('level') ?? ''] ?? LEVEL_1;
+const powerParam = params.get('power');
+const forcedPower = (POWER_TYPES as readonly string[]).includes(powerParam ?? '') ? (powerParam as PowerType) : undefined;
+const autoPlay = params.has('auto');
+const dropParam = params.get('drop');
+const dropChance = dropParam !== null && dropParam !== '' && Number.isFinite(Number(dropParam)) ? Math.max(0, Math.min(1, Number(dropParam))) : undefined;
+
+const newWorld = (): World =>
+  createWorld(debugLevel, {
+    seed: (Date.now() ^ (Math.random() * 2 ** 32)) >>> 0,
+    ...(forcedPower ? { forcedPower } : {}),
+    ...(dropChance !== undefined ? { dropChance } : {}),
+  });
 let world = newWorld();
 let renderer = new Renderer();
 renderer.loadLevel(world);
 /** Ball positions before the last step, for render interpolation. */
-let prev: { x: number; y: number }[] = world.balls.map((b) => ({ x: b.x, y: b.y }));
+const prev: XY[] = snapshotBalls(world.balls, []);
 
 function update(dt: number): void {
   if (!ui.started() || ui.paused()) return;
@@ -31,10 +46,22 @@ function update(dt: number): void {
   if ((world.status === 'won' || world.status === 'gameover') && inp.fire) {
     world = newWorld();
     renderer.loadLevel(world);
-    prev = world.balls.map((b) => ({ x: b.x, y: b.y }));
+    snapshotBalls(world.balls, prev);
     return;
   }
-  prev = world.balls.map((b) => ({ x: b.x, y: b.y }));
+  snapshotBalls(world.balls, prev);
+  if (autoPlay) {
+    // Debug: track the lowest descending ball (or a falling drop), auto-serve and auto-fire.
+    let target: number | null = null;
+    let lowest = -1;
+    for (const b of world.balls) if (b.vy > 0 && b.y > lowest) { lowest = b.y; target = b.x; }
+    if (target === null && world.drops.length) target = world.drops[0].x;
+    if (target !== null) inp.paddleX = target + Math.sin(world.time * 1.7) * world.paddle.w * 0.3;
+    inp.moveAxis = 0;
+    if (world.status === 'serve' || world.balls.some((b) => b.stuck) || world.effects.laser !== undefined) {
+      inp.fire = inp.fire || Math.floor(world.time * 4) !== Math.floor((world.time - dt) * 4);
+    }
+  }
   step(world, inp, dt);
 }
 
@@ -50,7 +77,7 @@ function render(alpha: number): void {
 
   renderer.shake.enabled = controls.settings.shake;
   renderer.setPixelScale(view.pixelScale);
-  renderer.onEvents(drainEvents(world));
+  renderer.onEvents(drainEvents(world), world);
   renderer.draw(c, world, prev, alpha, now / 1000);
 }
 

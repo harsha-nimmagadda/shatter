@@ -1,16 +1,51 @@
-import { CONFIG, type GameEvent, type World } from '../engine';
+import { CONFIG, EFFECT_NAMES, type Brick, type GameEvent, type World } from '../engine';
 import { Background, PlayFrame } from './background';
 import { bricksBounds } from './artLayout';
 import { BoilCache, type Sprite } from './boil';
 import { Particles } from './particles';
 import { Shake } from './shake';
 import { NOTEBOOK_SKIN, type Skin } from './skin';
+import { PowerFx } from './powerFx';
+import {
+  BAD_COLOR,
+  CAPSULE_PAD,
+  ERASER_H,
+  ERASER_W,
+  FIRE_COLOR,
+  GOOD_COLOR,
+  HUD_ICON,
+  HUD_PAD,
+  NET_H,
+  NET_PAD,
+  OVERLAY_PAD,
+  PLANE_SIZE,
+  capsuleColor,
+  renderCapsule,
+  renderEraser,
+  renderGhostBrick,
+  renderHudIcon,
+  renderNet,
+  renderPaddleOverlay,
+  renderPlane,
+  renderStyledBall,
+  type BallStyle,
+  type OverlayKind,
+} from './powerSprites';
+import {
+  ballRenderPos,
+  effectFraction,
+  isBadPower,
+  lerpTowards,
+  powerName,
+  type XY,
+} from './powerVisuals';
 import {
   BALL_PAD,
   BRICK_PAD,
   MSG_PAD,
   PADDLE_PAD,
   brickColor,
+  EXPLOSIVE_FILL,
   renderBall,
   renderBrick,
   renderMessage,
@@ -28,9 +63,15 @@ interface BrickInfo {
   color: string;
 }
 
+const LEVEL_TEXT = ['size -2', 'size -1', '', 'size +1', 'size +2'];
+const POP_SCALE = 0.28;
+const GHOST_KEY = 'ghost';
+const OVERLAY_IDX: Record<OverlayKind, number> = { ticks: 1, ink: 2, glue: 3, cannons: 4 };
+
 export class Renderer {
   readonly shake = new Shake();
   readonly particles = new Particles(400);
+  readonly fx = new PowerFx();
   private readonly cache = new BoilCache(512);
   private readonly bg: Background;
   private readonly frame: PlayFrame;
@@ -38,6 +79,8 @@ export class Renderer {
   private readonly msgWidth = new Map<string, number>();
   private readonly trail = new Float32Array(MAX_TRAILS * TRAIL * 2);
   private readonly trailLen = new Uint8Array(MAX_TRAILS);
+  private readonly keyMaps = new Map<string, Map<string, string>>();
+  private readonly pos: XY = { x: 0, y: 0 };
   private lastTime = -1;
   private pixelScale = 1;
   private readonly showFps: boolean;
@@ -46,6 +89,12 @@ export class Renderer {
   private fpsN = 0;
   private scoreText = '';
   private scoreValue = -1;
+  private hasMoving = false;
+  private dispW: number = CONFIG.paddleW;
+  private lastBallCount = 0;
+  private frameNo = 0;
+  private shaveAcc = 0;
+  private padW: number = CONFIG.paddleW;
 
   constructor(readonly skin: Skin = NOTEBOOK_SKIN) {
     this.bg = new Background(skin);
@@ -62,17 +111,41 @@ export class Renderer {
   /** Rebuilds per-level caches (brick colours/kinds, sprites, effects). Call on every (re)start. */
   loadLevel(world: World): void {
     this.bricks.clear();
-    for (const b of world.bricks) this.bricks.set(b.id, { kind: b.kind, color: brickColor(this.skin, b.kind, 1) });
+    this.hasMoving = false;
+    for (const b of world.bricks) {
+      this.bricks.set(b.id, { kind: b.kind, color: brickColor(this.skin, b.type, b.maxHp) });
+      if (b.type === 'moving') this.hasMoving = true;
+    }
     const grid = bricksBounds(world.bricks);
     this.bg.setLayout(world.bricks[0]?.seed ?? 1, grid);
     this.cache.clear();
     this.particles.clear();
+    this.fx.clear();
     this.trailLen.fill(0);
+    this.dispW = world.paddle.w;
+    this.padW = world.paddle.w;
+    this.lastBallCount = 0;
   }
 
-  onEvents(events: readonly GameEvent[]): void {
+  /** Interned string keys so per-frame cache lookups never concatenate after the first call. */
+  private key(prefix: string, name: string): string {
+    let m = this.keyMaps.get(prefix);
+    if (!m) {
+      m = new Map();
+      this.keyMaps.set(prefix, m);
+    }
+    let v = m.get(name);
+    if (v === undefined) {
+      v = prefix + name;
+      m.set(name, v);
+    }
+    return v;
+  }
+
+  onEvents(events: readonly GameEvent[], world?: World): void {
     const p = this.particles;
     const sk = this.skin;
+    const padW = world ? world.paddle.w : this.padW;
     for (let i = 0; i < events.length; i++) {
       const e = events[i];
       switch (e.type) {
@@ -118,6 +191,52 @@ export class Renderer {
             });
           }
           break;
+        case 'explode':
+          this.fx.addBlast(e.x, e.y);
+          p.emit('shred', e.x, e.y, 14, { color: EXPLOSIVE_FILL, speed: 420, life: 1 });
+          p.emit('shred', e.x, e.y, 6, { color: '#ffd23f', speed: 320, size: 5 });
+          p.emit('speck', e.x, e.y, 10, { color: sk.ink, speed: 300, life: 0.6 });
+          this.shake.add(0.5);
+          break;
+        case 'regen':
+          if (e.brickId !== undefined) this.fx.addPop(e.brickId);
+          p.emit('speck', e.x, e.y, 6, { color: sk.graphite, speed: 120 });
+          break;
+        case 'reveal':
+          if (e.brickId !== undefined) this.fx.addPop(e.brickId);
+          p.emit('tick', e.x, e.y, 6, { color: sk.ink, speed: 130, size: 8, life: 0.25 });
+          break;
+        case 'powerup': {
+          const bad = isBadPower(e.power ?? '');
+          const col = e.power ? capsuleColor(e.power) : GOOD_COLOR;
+          p.emit('tick', e.x, e.y, 8, { color: col, speed: 200, size: 11, life: 0.3 });
+          p.emit('speck', e.x, e.y, 6, { color: col, speed: 150, life: 0.45 });
+          if (e.power) this.fx.addFloat(powerName(e.power), e.x, e.y - 18, bad ? BAD_COLOR : col);
+          if (e.power === 'speedup') this.fx.addSpeed(1);
+          else if (e.power === 'slowdown') this.fx.addSpeed(-1);
+          else if (e.power === 'killpaddle') this.shake.add(0.35);
+          break;
+        }
+        case 'powerMiss':
+          p.emit('speck', e.x, H - 6, 4, { angle: -Math.PI / 2, spread: 1, speed: 80, color: sk.graphite, life: 0.35 });
+          break;
+        case 'effectEnd':
+          p.emit('speck', e.x, e.y, 5, { angle: -Math.PI / 2, spread: 1.4, speed: 90, color: sk.graphite, life: 0.4 });
+          break;
+        case 'laser':
+          for (let k = -1; k <= 1; k += 2) {
+            p.emit('tick', e.x + k * (padW / 2 - 6), e.y - 10, 2, { angle: -Math.PI / 2, spread: 0.5, speed: 140, size: 7, life: 0.15, color: sk.ink });
+          }
+          break;
+        case 'eraser':
+          this.fx.addEraser(e.y);
+          break;
+        case 'net':
+          for (let k = 0; k < 16; k++) {
+            p.emit('shred', 20 + (k * (W - 40)) / 15, H - 18, 1, { color: '#f9e46a', angle: -Math.PI / 2, spread: 1, speed: 220, size: 6, life: 0.9 });
+          }
+          this.shake.add(0.15);
+          break;
         default:
           break;
       }
@@ -127,67 +246,232 @@ export class Renderer {
   draw(
     ctx: CanvasRenderingContext2D,
     world: World,
-    prev: readonly { x: number; y: number }[],
+    prev: readonly XY[],
     alpha: number,
     time: number,
   ): void {
     const dt = this.lastTime < 0 ? 0 : Math.min(0.05, Math.max(0, time - this.lastTime));
     this.lastTime = time;
+    this.frameNo++;
+    this.padW = world.paddle.w;
     this.particles.update(dt);
+    this.fx.update(dt);
     this.shake.update(dt);
 
     this.bg.draw(ctx, this.pixelScale);
 
     ctx.translate(this.shake.x, this.shake.y);
     this.frame.draw(ctx, time);
+    this.drawGhosts(ctx, world, time);
     this.drawBricks(ctx, world, time);
-    this.drawPaddle(ctx, world, time);
-    this.drawBalls(ctx, world, prev, alpha, time);
+    this.drawBlastFlash(ctx, world, time);
+    this.drawNet(ctx, world, time);
+    this.drawPaddle(ctx, world, dt, time);
+    this.drawBalls(ctx, world, prev, alpha, time, dt);
+    this.drawDrops(ctx, world, time);
+    this.drawBolts(ctx, world);
+    this.fx.drawErasers(ctx, this.eraserSprite(), ERASER_W, ERASER_H, time, this.crumb);
     this.particles.draw(ctx);
+    this.fx.drawBlasts(ctx, this.skin);
+    this.fx.drawFloats(ctx, this.skin);
     ctx.translate(-this.shake.x, -this.shake.y);
 
+    this.fx.drawSpeed(ctx, time);
     this.drawHud(ctx, world, time);
     this.drawMessage(ctx, world, time);
     if (this.showFps) this.drawFps(ctx, dt);
+  }
+
+  private readonly crumb = (x: number, y: number): void => {
+    this.particles.emit('crumb', x, y, 1, { color: this.skin.eraser, speed: 70, angle: Math.PI / 2, spread: 1.2, life: 0.6 });
+  };
+
+  private eraserSprite(): Sprite {
+    const k = this.key('', 'eraser');
+    return this.cache.get(k, 1) ?? this.cache.build(k, 1, ERASER_W, ERASER_H, 4, (g, v) => renderEraser(g, this.skin, ERASER_W, ERASER_H, v));
+  }
+
+  private brickSprite(b: Brick): Sprite {
+    let s = this.cache.get(b.id, b.hp);
+    if (!s) {
+      s = this.cache.build(b.id, b.hp, b.w, b.h, BRICK_PAD, (g, v) => renderBrick(g, this.skin, b, v));
+    }
+    return s;
   }
 
   private drawBricks(ctx: CanvasRenderingContext2D, world: World, time: number): void {
     const list = world.bricks;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
-      let s = this.cache.get(b.id, b.hp);
-      if (!s) {
-        s = this.cache.build(b.id, b.hp, b.w, b.h, BRICK_PAD, (g, v) => renderBrick(g, this.skin, b, v));
+      if (b.hidden) {
+        // A very faint pencil smudge so the hidden brick is fair, not invisible.
+        ctx.globalAlpha = 0.06;
+        ctx.fillStyle = this.skin.graphite;
+        ctx.fillRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
+        ctx.globalAlpha = 1;
+        continue;
       }
-      s.draw(ctx, b.x, b.y, time, b.seed);
+      const s = this.brickSprite(b);
+      const pa = this.fx.popAgeOf(b.id);
+      if (pa >= 0) {
+        // Quick sketch-in pop: starts bigger and faint, settles to normal.
+        const t = pa / 0.3;
+        const k = 1 + POP_SCALE * (1 - t) * (1 - t);
+        ctx.save();
+        ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
+        ctx.scale(k, k);
+        ctx.globalAlpha = 0.35 + 0.65 * Math.min(1, t * 1.5);
+        s.draw(ctx, -b.w / 2, -b.h / 2, time, b.seed);
+        ctx.restore();
+      } else {
+        s.draw(ctx, b.x, b.y, time, b.seed);
+      }
+    }
+    if (this.hasMoving) {
+      ctx.strokeStyle = this.skin.ink;
+      ctx.lineWidth = 1.4;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      for (let i = 0; i < list.length; i++) {
+        const b = list[i];
+        if (b.type !== 'moving' || b.vx === 0 || b.hidden) continue;
+        const dir = b.vx > 0 ? 1 : -1;
+        const ex = dir > 0 ? b.x - 1 : b.x + b.w + 1;
+        for (let k = 0; k < 3; k++) {
+          const len = 6 + 5 * (0.5 + 0.5 * Math.sin(time * 18 + b.id * 1.3 + k * 2));
+          const y = b.y + b.h * (0.28 + 0.22 * k);
+          ctx.moveTo(ex, y);
+          ctx.lineTo(ex - dir * len, y);
+        }
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
   }
 
-  private drawPaddle(ctx: CanvasRenderingContext2D, world: World, time: number): void {
-    const p = world.paddle;
-    let s = this.cache.get('paddle', p.w * 1000 + p.h);
-    if (!s) s = this.cache.build('paddle', p.w * 1000 + p.h, p.w, p.h, PADDLE_PAD, (g, v) => renderPaddle(g, this.skin, p.w, p.h, v));
-    s.draw(ctx, p.x - p.w / 2, p.y, time, 7);
+  /** Waiting regenerating bricks: a faint dotted outline that sketches in during the last second. */
+  private drawGhosts(ctx: CanvasRenderingContext2D, world: World, time: number): void {
+    const gs = world.ghosts;
+    if (gs.length === 0) return;
+    for (let i = 0; i < gs.length; i++) {
+      const b = gs[i].brick;
+      const prog = gs[i].timer < 1 ? 1 - Math.max(0, gs[i].timer) : 0;
+      const gk = this.key('', GHOST_KEY);
+      // Cached per size; all bricks share one size, so a single key is fine (tag = width * 100 + height).
+      const tag = Math.round(b.w) * 1000 + Math.round(b.h);
+      const g = this.cache.get(gk, tag) ?? this.cache.build(gk, tag, b.w, b.h, BRICK_PAD, (c, v) => renderGhostBrick(c, this.skin, b.w, b.h, v));
+      ctx.globalAlpha = 0.16 + 0.7 * prog;
+      g.draw(ctx, b.x, b.y, time, b.seed);
+      if (prog > 0.05) {
+        ctx.globalAlpha = prog * prog * 0.5;
+        this.brickSprite(b).draw(ctx, b.x, b.y, time, b.seed);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
-  private ballSprite(r: number): Sprite {
+  /** Chained explosives about to go off flicker briefly. */
+  private drawBlastFlash(ctx: CanvasRenderingContext2D, world: World, time: number): void {
+    const bl = world.blasts;
+    if (bl.length === 0) return;
+    ctx.fillStyle = '#ffd23f';
+    for (let i = 0; i < bl.length; i++) {
+      const id = bl[i].brickId;
+      for (let j = 0; j < world.bricks.length; j++) {
+        const b = world.bricks[j];
+        if (b.id !== id) continue;
+        ctx.globalAlpha = 0.35 + 0.3 * Math.sin(time * 70 + i);
+        ctx.fillRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawNet(ctx: CanvasRenderingContext2D, world: World, time: number): void {
+    if (!world.net) return;
+    const k = this.key('', 'net');
+    const s = this.cache.get(k, 1) ?? this.cache.build(k, 1, W, NET_H, NET_PAD, (g, v) => renderNet(g, this.skin, W, NET_H, v));
+    s.draw(ctx, 0, H - CONFIG.netInset - 2, time, 9);
+  }
+
+  private overlay(kind: OverlayKind, rw: number, h: number): Sprite {
+    // Numeric keys: paddle sprites use -rw, overlays -(kind * 100000 + rw); brick ids are positive.
+    const key = -(OVERLAY_IDX[kind] * 100000 + rw);
+    const tag = rw * 100 + h;
+    return this.cache.get(key, tag) ?? this.cache.build(key, tag, rw, h, OVERLAY_PAD, (g, v) => renderPaddleOverlay(g, this.skin, kind, rw, h, v));
+  }
+
+  private drawPaddle(ctx: CanvasRenderingContext2D, world: World, dt: number, time: number): void {
+    const p = world.paddle;
+    this.dispW = lerpTowards(this.dispW, p.w, dt);
+    const rw = Math.round(p.w);
+    const tag = rw * 1000 + p.h;
+    // Number keys <= -1 are reserved for the paddle (brick ids are positive).
+    const key = -rw;
+    const s = this.cache.get(key, tag) ?? this.cache.build(key, tag, rw, p.h, PADDLE_PAD, (g, v) => renderPaddle(g, this.skin, rw, p.h, v));
+    const sx = this.dispW / rw;
+    const x0 = p.x - this.dispW / 2;
+    ctx.save();
+    ctx.translate(x0, p.y);
+    if (Math.abs(sx - 1) > 0.002) ctx.scale(sx, 1);
+    s.draw(ctx, 0, 0, time, 7);
+    const eff = world.effects;
+    if (eff.ruler !== undefined) this.overlay('ticks', rw, p.h).draw(ctx, 0, 0, time, 8);
+    if (eff.inkblot !== undefined) this.overlay('ink', rw, p.h).draw(ctx, 0, 0, time, 9);
+    if (eff.catch !== undefined) this.overlay('glue', rw, p.h).draw(ctx, 0, 0, time, 10);
+    if (eff.laser !== undefined) this.overlay('cannons', rw, p.h).draw(ctx, 0, 0, time, 11);
+    ctx.restore();
+    if (eff.sharpener !== undefined && dt > 0) {
+      this.shaveAcc += dt * 5;
+      while (this.shaveAcc >= 1) {
+        this.shaveAcc -= 1;
+        const px = p.x + Math.sin(time * 13 + this.frameNo) * this.dispW * 0.4;
+        this.particles.emit('shred', px, p.y, 1, { color: '#e9c27a', angle: -Math.PI / 2, spread: 1.2, speed: 110, size: 3.5, life: 0.6, gravity: 500 });
+      }
+    }
+  }
+
+  private ballSprite(r: number, style?: BallStyle): Sprite {
     const tag = Math.round(r * 10);
+    if (style) {
+      const R = style === 'crumpled' ? r * 1.35 : r;
+      const k = this.key('ball-', style);
+      return (
+        this.cache.get(k, tag) ??
+        this.cache.build(k, tag, R * 2, R * 2, BALL_PAD, (g, v) =>
+          renderStyledBall(g, this.skin, style, r, v, (c, vv) => renderBall(c, this.skin, r, vv)),
+        )
+      );
+    }
     return this.cache.get('ball', tag) ?? this.cache.build('ball', tag, r * 2, r * 2, BALL_PAD, (g, v) => renderBall(g, this.skin, r, v));
+  }
+
+  private planeSprite(): Sprite {
+    const k = this.key('', 'plane');
+    return this.cache.get(k, 1) ?? this.cache.build(k, 1, PLANE_SIZE, PLANE_SIZE, 2, (g, v) => renderPlane(g, this.skin, v));
   }
 
   private drawBalls(
     ctx: CanvasRenderingContext2D,
     world: World,
-    prev: readonly { x: number; y: number }[],
+    prev: readonly XY[],
     alpha: number,
     time: number,
+    dt: number,
   ): void {
     const balls = world.balls;
+    if (balls.length !== this.lastBallCount) {
+      this.lastBallCount = balls.length;
+      this.trailLen.fill(0);
+    }
+    const eff = world.effects;
+    const style: BallStyle | undefined =
+      eff.crumpled !== undefined ? 'crumpled' : eff.fireball !== undefined ? 'fire' : eff.through !== undefined ? 'through' : undefined;
+    const plane = eff.plane !== undefined;
     for (let i = 0; i < balls.length && i < MAX_TRAILS; i++) {
       const b = balls[i];
-      const pv = prev[i] ?? b;
-      const x = pv.x + (b.x - pv.x) * alpha;
-      const y = pv.y + (b.y - pv.y) * alpha;
+      const { x, y } = ballRenderPos(prev, i, balls.length, b, b.stuck, alpha, this.pos);
       const base = i * TRAIL * 2;
       if (b.stuck) {
         this.trailLen[i] = 0;
@@ -205,22 +489,108 @@ export class Renderer {
           n = Math.min(TRAIL, n + 1);
         }
         this.trailLen[i] = n;
-        // Faint smudge behind the ball.
-        ctx.fillStyle = this.skin.graphite;
+        // Faint smudge behind the ball (orange for a fireball).
+        ctx.fillStyle = style === 'fire' ? FIRE_COLOR : this.skin.graphite;
         for (let k = 1; k < n; k++) {
-          ctx.globalAlpha = 0.16 * (1 - k / TRAIL);
+          ctx.globalAlpha = (style === 'fire' ? 0.3 : 0.16) * (1 - k / TRAIL);
           ctx.beginPath();
           ctx.arc(this.trail[base + k * 2], this.trail[base + k * 2 + 1], b.r * (1 - k * 0.09), 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;
+        if (style === 'fire' && dt > 0 && (this.frameNo + i) % 2 === 0) {
+          this.particles.emit('crumb', x, y + 2, 1, {
+            color: this.frameNo % 4 < 2 ? FIRE_COLOR : '#ffd23f',
+            speed: 45,
+            angle: Math.atan2(-b.vy, -b.vx),
+            spread: 0.8,
+            gravity: -140,
+            life: 0.35,
+            size: 3.2,
+          });
+        }
       }
-      this.ballSprite(b.r).draw(ctx, x - b.r, y - b.r, time, 5 + i);
+      if (plane) this.drawPlane(ctx, b.vx, b.vy, b.stuck, x, y, time, i);
+      const crumpled = style === 'crumpled';
+      const R = crumpled ? b.r * 1.35 : b.r;
+      const sprite = this.ballSprite(b.r, style);
+      if (style === 'through') ctx.globalAlpha = 0.5;
+      sprite.draw(ctx, x - R, y - R, time, 5 + i);
+      ctx.globalAlpha = 1;
     }
   }
 
+  private drawPlane(ctx: CanvasRenderingContext2D, vx: number, vy: number, stuck: boolean, x: number, y: number, time: number, seed: number): void {
+    const ang = stuck ? -Math.PI / 2 : Math.atan2(vy, vx);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    if (!stuck) {
+      ctx.strokeStyle = this.skin.ink;
+      ctx.lineWidth = 1.2;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(-16, -4);
+      ctx.lineTo(-26, -4);
+      ctx.moveTo(-18, 4);
+      ctx.lineTo(-30, 4);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    this.planeSprite().draw(ctx, -PLANE_SIZE / 2 - 2, -PLANE_SIZE / 2, time, seed);
+    ctx.restore();
+  }
+
+  private drawDrops(ctx: CanvasRenderingContext2D, world: World, time: number): void {
+    const drops = world.drops;
+    const w = CONFIG.dropW;
+    const h = CONFIG.dropH;
+    for (let i = 0; i < drops.length; i++) {
+      const d = drops[i];
+      const k = this.key('drop-', d.type);
+      const s = this.cache.get(k, 1) ?? this.cache.build(k, 1, w, h, CAPSULE_PAD, (g, v) => renderCapsule(g, this.skin, d.type, w, h, v));
+      ctx.save();
+      ctx.translate(d.x, d.y);
+      ctx.rotate(Math.sin(time * 3.5 + d.id * 1.7) * 0.14);
+      s.draw(ctx, -w / 2, -h / 2, time, d.id);
+      ctx.restore();
+    }
+  }
+
+  private drawBolts(ctx: CanvasRenderingContext2D, world: World): void {
+    const bolts = world.bolts;
+    if (bolts.length === 0) return;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = this.skin.ink;
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    for (let i = 0; i < bolts.length; i++) {
+      const b = bolts[i];
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x + 0.5, b.y + 6);
+      ctx.moveTo(b.x - 0.4, b.y + 10);
+      ctx.lineTo(b.x, b.y + 15);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = '#8b9099';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < bolts.length; i++) {
+      const b = bolts[i];
+      ctx.moveTo(b.x + 1.8, b.y + 1);
+      ctx.lineTo(b.x + 1.8, b.y + 5);
+    }
+    ctx.stroke();
+  }
+
+  private hudIcon(name: string): Sprite {
+    const k = this.key('hud-', name);
+    return this.cache.get(k, 1) ?? this.cache.build(k, 1, HUD_ICON, HUD_ICON, HUD_PAD, (g, v) => renderHudIcon(g, this.skin, name, HUD_ICON, v));
+  }
+
   private drawHud(ctx: CanvasRenderingContext2D, world: World, time: number): void {
-    ctx.font = `28px ${this.skin.font}`;
+    ctx.font = `26px ${this.skin.font}`;
     ctx.fillStyle = this.skin.ink;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
@@ -228,14 +598,59 @@ export class Renderer {
       this.scoreValue = world.score;
       this.scoreText = `Score ${world.score}`;
     }
-    ctx.fillText(this.scoreText, 18, CONFIG.topWall / 2 + 2);
+    ctx.fillText(this.scoreText, 18, 21);
     // Lives as little doodled balls; kept clear of the DOM gear button at the top right.
     const sprite = this.ballSprite(CONFIG.ballR);
     const s = 1.5;
     const step = CONFIG.ballR * 2 * s + 10;
     const right = W - 86;
     for (let i = 0; i < world.lives; i++) {
-      sprite.draw(ctx, right - (i + 1) * step + 10, CONFIG.topWall / 2 - CONFIG.ballR * s + 2, time, 11 + i, s);
+      sprite.draw(ctx, right - (i + 1) * step + 10, 21 - CONFIG.ballR * s, time, 11 + i, s);
+    }
+    this.drawEffectsRow(ctx, world, time);
+  }
+
+  /** Second HUD row (under the score, above the top wall): timed-effect icons with a shrinking pencil arc. */
+  private drawEffectsRow(ctx: CanvasRenderingContext2D, world: World, time: number): void {
+    const cy = 46;
+    let x = 30;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < EFFECT_NAMES.length; i++) {
+      const name = EFFECT_NAMES[i];
+      const left = world.effects[name];
+      if (left === undefined) continue;
+      const f = effectFraction(name, left);
+      this.hudIcon(name).draw(ctx, x - HUD_ICON / 2, cy - HUD_ICON / 2, time, i);
+      ctx.strokeStyle = f < 0.25 && Math.floor(time * 6) % 2 === 0 ? BAD_COLOR : this.skin.graphite;
+      ctx.lineWidth = 2.4;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.arc(x, cy, 13.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      x += 33;
+    }
+    if (world.paddleLevel !== 0) {
+      const t = LEVEL_TEXT[world.paddleLevel + 2] ?? '';
+      ctx.font = `17px ${this.skin.font}`;
+      ctx.fillStyle = world.paddleLevel > 0 ? GOOD_COLOR : BAD_COLOR;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText(t, x - 12, cy + 1);
+      x += ctx.measureText(t).width + 8;
+    }
+    if (world.net) {
+      ctx.fillStyle = '#f9e46a';
+      ctx.fillRect(x - 12, cy - 8, 16, 16);
+      ctx.strokeStyle = this.skin.ink;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - 12, cy - 8, 16, 16);
+      ctx.beginPath();
+      ctx.moveTo(x - 9, cy - 3);
+      ctx.lineTo(x, cy - 3);
+      ctx.moveTo(x - 9, cy + 2);
+      ctx.lineTo(x - 3, cy + 2);
+      ctx.stroke();
     }
   }
 

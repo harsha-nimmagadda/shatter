@@ -19,7 +19,7 @@ describe('parseLevel', () => {
   });
 
   it('rejects bad characters and row lengths', () => {
-    expect(() => parseLevel({ name: 'x', rows: ['1x........'] }, 0)).toThrow(/bad character "x"/);
+    expect(() => parseLevel({ name: 'x', rows: ['1z........'] }, 0)).toThrow(/bad character "z"/);
     expect(() => parseLevel({ name: 'x', rows: ['111'] }, 0)).toThrow(/expected 10/);
   });
 

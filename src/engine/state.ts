@@ -1,5 +1,7 @@
-import { CONFIG } from './config';
+import { CONFIG, type EffectName, type PowerType } from './config';
 import { parseLevel, type Level } from './level';
+
+export type BrickType = 'normal' | 'steel' | 'explosive' | 'moving' | 'regen' | 'hidden';
 
 export interface Brick {
   id: number;
@@ -10,7 +12,14 @@ export interface Brick {
   h: number;
   hp: number;
   maxHp: number;
+  /** Coarse kind: 'steel' = indestructible, everything else 'normal'. Kept for the renderer. */
   kind: 'normal' | 'steel';
+  /** Full brick type (see level.ts for the level characters). */
+  type: BrickType;
+  /** Horizontal velocity (moving bricks only, else 0). */
+  vx: number;
+  /** True until a hidden brick has been hit once; renderers must not draw it. */
+  hidden: boolean;
   /** Hash of (level, row, col) for the hand-drawn renderer. */
   seed: number;
 }
@@ -24,6 +33,37 @@ export interface Ball {
   /** Resting on the paddle at paddle.x + stuckOffset before launch. */
   stuck: boolean;
   stuckOffset: number;
+  /** Seconds spent stuck to the paddle by 'catch' (auto-release timer). */
+  stuckT?: number;
+  /** Ids of bricks currently overlapped by a 'through' ball (damage once per pass). */
+  overlap?: number[];
+}
+
+export interface Drop {
+  id: number;
+  type: PowerType;
+  /** Centre. */
+  x: number;
+  y: number;
+  vy: number;
+}
+
+export interface Bolt {
+  x: number;
+  y: number;
+}
+
+/** A destroyed regenerating brick waiting to re-form. */
+export interface Ghost {
+  brick: Brick;
+  /** Seconds until the next re-form attempt. */
+  timer: number;
+}
+
+/** An explosive brick that will detonate at world.time >= at (chain delay). */
+export interface PendingBlast {
+  brickId: number;
+  at: number;
 }
 
 export interface Paddle {
@@ -36,10 +76,14 @@ export interface Paddle {
 }
 
 export interface GameEvent {
-  type: 'launch' | 'wall' | 'paddle' | 'brickHit' | 'brickBreak' | 'lifeLost' | 'won' | 'gameover';
+  type:
+    | 'launch' | 'wall' | 'paddle' | 'brickHit' | 'brickBreak' | 'lifeLost' | 'won' | 'gameover'
+    | 'explode' | 'regen' | 'reveal' | 'powerup' | 'powerMiss' | 'effectEnd' | 'laser' | 'eraser' | 'net';
   x: number;
   y: number;
   brickId?: number;
+  /** Power-up type ('powerup', 'powerMiss') or effect name ('effectEnd'). */
+  power?: PowerType | EffectName;
 }
 
 export interface World {
@@ -57,6 +101,23 @@ export interface World {
   rng: number;
   events: GameEvent[];
   time: number;
+  drops: Drop[];
+  bolts: Bolt[];
+  ghosts: Ghost[];
+  blasts: PendingBlast[];
+  /** Seconds remaining per timed effect. */
+  effects: Partial<Record<EffectName, number>>;
+  /** Paddle size level, -2..+2. */
+  paddleLevel: number;
+  /** Sticky-note safety net armed. */
+  net: boolean;
+  /** Seconds until the laser may fire again. */
+  laserCd: number;
+  nextId: number;
+  /** Chance per counting brick break to drop a capsule. */
+  dropChance: number;
+  /** Debug: every drop is this power. */
+  forcedPower: PowerType | null;
 }
 
 export interface Input {
@@ -74,7 +135,7 @@ export function newStuckBall(): Ball {
 
 export function createWorld(
   level: Level,
-  opts: { seed?: number; lives?: number; levelIndex?: number } = {},
+  opts: { seed?: number; lives?: number; levelIndex?: number; forcedPower?: PowerType; dropChance?: number } = {},
 ): World {
   const paddle = { x: CONFIG.width / 2, y: CONFIG.paddleY, w: CONFIG.paddleW, h: CONFIG.paddleH };
   const ball = newStuckBall();
@@ -93,5 +154,16 @@ export function createWorld(
     rng: (opts.seed ?? 1) >>> 0,
     events: [],
     time: 0,
+    drops: [],
+    bolts: [],
+    ghosts: [],
+    blasts: [],
+    effects: {},
+    paddleLevel: 0,
+    net: false,
+    laserCd: 0,
+    nextId: 1,
+    dropChance: opts.dropChance ?? (opts.forcedPower ? 1 : CONFIG.dropChance),
+    forcedPower: opts.forcedPower ?? null,
   };
 }

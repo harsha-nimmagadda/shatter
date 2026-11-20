@@ -3,3 +3,7 @@ export * from './level';
 export * from './physics';
 export * from './rng';
 export * from './state';
+export * from './bricks';
+export * from './drops';
+export * from './paddle';
+export * from './powerups';

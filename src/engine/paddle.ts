@@ -1,12 +1,10 @@
 import { CONFIG as C } from './config';
 import type { World } from './state';
 
-/** Paddle width from the size level and the sharpener / ruler effects. */
+/** Paddle width: 96 base, 160 with the ruler, then x0.7 with the sharpener. */
 export function paddleWidth(w: World): number {
-  const level = Math.max(-2, Math.min(2, w.paddleLevel));
-  let width: number = C.paddleWidths[level + 2]!;
+  let width: number = w.effects.ruler !== undefined ? C.rulerW : C.paddleW;
   if (w.effects.sharpener !== undefined) width *= C.sharpenerMul;
-  if (w.effects.ruler !== undefined) width *= C.rulerMul;
   return width;
 }
 
@@ -22,7 +20,12 @@ export function maxBounceDeg(w: World): number {
   return w.effects.ruler !== undefined ? C.rulerMaxBounceDeg : C.maxBounceDeg;
 }
 
-/** Multiplier on the paddle's movement speeds. */
-export function paddleSpeedMul(w: World): number {
-  return w.effects.inkblot !== undefined ? C.inkblotSpeedMul : 1;
+/** Solid x-ranges of the paddle: one, or two while the scissors gap is open. */
+export function paddleSegments(w: World): [number, number][] {
+  const p = w.paddle;
+  const l = p.x - p.w / 2;
+  const r = p.x + p.w / 2;
+  if (w.effects.scissors === undefined) return [[l, r]];
+  const g = C.scissorsGap / 2;
+  return [[l, p.x - g], [p.x + g, r]];
 }

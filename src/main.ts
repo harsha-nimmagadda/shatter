@@ -61,7 +61,7 @@ function update(dt: number): void {
     if (target === null && world.drops.length) target = world.drops[0].x;
     if (target !== null) inp.paddleX = target + Math.sin(world.time * 1.7) * world.paddle.w * 0.3;
     inp.moveAxis = 0;
-    if (world.status === 'serve' || world.balls.some((b) => b.stuck) || world.effects.laser !== undefined) {
+    if (world.status === 'serve' || world.balls.some((b) => b.stuck)) {
       inp.fire = inp.fire || Math.floor(world.time * 4) !== Math.floor((world.time - dt) * 4);
     }
   }

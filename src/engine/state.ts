@@ -20,6 +20,8 @@ export interface Brick {
   vx: number;
   /** True until a hidden brick has been hit once; renderers must not draw it. */
   hidden: boolean;
+  /** Metal clips only: ball hits since the last breakable-brick damage (anti-softlock). */
+  streakHits: number;
   /** Hash of (level, row, col) for the hand-drawn renderer. */
   seed: number;
 }
@@ -33,10 +35,8 @@ export interface Ball {
   /** Resting on the paddle at paddle.x + stuckOffset before launch. */
   stuck: boolean;
   stuckOffset: number;
-  /** Seconds spent stuck to the paddle by 'catch' (auto-release timer). */
+  /** Seconds spent stuck to the paddle by 'gluestick' (auto-release timer). */
   stuckT?: number;
-  /** Ids of bricks currently overlapped by a 'through' ball (damage once per pass). */
-  overlap?: number[];
 }
 
 export interface Drop {
@@ -78,12 +78,15 @@ export interface Paddle {
 export interface GameEvent {
   type:
     | 'launch' | 'wall' | 'paddle' | 'brickHit' | 'brickBreak' | 'lifeLost' | 'won' | 'gameover'
-    | 'explode' | 'regen' | 'reveal' | 'powerup' | 'powerMiss' | 'effectEnd' | 'laser' | 'eraser' | 'net';
+    | 'explode' | 'regen' | 'reveal' | 'powerup' | 'powerMiss' | 'effectEnd' | 'staple' | 'eraser' | 'net'
+    | 'splash' | 'extraLife' | 'combo' | 'clipPop' | 'clipLoose';
   x: number;
   y: number;
   brickId?: number;
   /** Power-up type ('powerup', 'powerMiss') or effect name ('effectEnd'). */
   power?: PowerType | EffectName;
+  /** 'combo': the new multiplier. */
+  value?: number;
 }
 
 export interface World {
@@ -107,12 +110,16 @@ export interface World {
   blasts: PendingBlast[];
   /** Seconds remaining per timed effect. */
   effects: Partial<Record<EffectName, number>>;
-  /** Paddle size level, -2..+2. */
-  paddleLevel: number;
   /** Sticky-note safety net armed. */
   net: boolean;
-  /** Seconds until the laser may fire again. */
-  laserCd: number;
+  /** Seconds until the stapler fires its next volley. */
+  stapleCd: number;
+  /** Bricks broken since any ball last touched the paddle. */
+  combo: number;
+  /** Ball hits on metal clips since the last breakable-brick damage. */
+  clipStreak: number;
+  /** Score at which the next extra life is awarded. */
+  nextLifeAt: number;
   nextId: number;
   /** Chance per counting brick break to drop a capsule. */
   dropChance: number;
@@ -159,9 +166,11 @@ export function createWorld(
     ghosts: [],
     blasts: [],
     effects: {},
-    paddleLevel: 0,
     net: false,
-    laserCd: 0,
+    stapleCd: 0,
+    combo: 0,
+    clipStreak: 0,
+    nextLifeAt: CONFIG.extraLifeEvery,
     nextId: 1,
     dropChance: opts.dropChance ?? (opts.forcedPower ? 1 : CONFIG.dropChance),
     forcedPower: opts.forcedPower ?? null,

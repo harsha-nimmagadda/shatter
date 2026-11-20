@@ -156,7 +156,8 @@ export function drawPowerIcon(
 
 export function capsuleColor(type: string): string {
   if (isBadPower(type)) return BAD_COLOR;
-  return type === 'extralife' || type === 'stickynote' || type === 'eraser' || type === 'slowdown' ? GREEN_COLOR : GOOD_COLOR;
+  // TODO(render-revamp): category-coloured badges.
+  return type === 'goldstar' || type === 'stickynote' || type === 'eraser' || type === 'correction' ? GREEN_COLOR : GOOD_COLOR;
 }
 
 /** Falling power-up capsule: rough rounded outline + icon (content box 36 x 20, icon overflows a little). */

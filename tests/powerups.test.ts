@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CONFIG, EFFECT_NAMES, LEVEL_1, POWER_TYPES, applyPower, createWorld, damageBrick, pickPower, step,
+  CONFIG, EFFECT_NAMES, LEVEL_1, POWER_CATEGORY, POWER_TYPES, applyPower, comboMultiplier, isPositive,
+  edgeNeighbours, createWorld, damageBrick, pickPower, step,
   type Brick, type BrickType, type EffectName, type Input, type PowerType, type World,
 } from '../src/engine';
 
@@ -11,7 +12,7 @@ const FIRE: Input = { ...NONE, fire: true };
 function mk(id: number, x: number, y: number, type: BrickType = 'normal', hp = 1): Brick {
   return {
     id, x, y, w: 48, h: 24, hp, maxHp: hp, kind: type === 'steel' ? 'steel' : 'normal', type, vx: 0,
-    hidden: false, seed: id,
+    hidden: false, streakHits: 0, seed: id,
   };
 }
 
@@ -30,17 +31,21 @@ function world(bricks: Brick[] = [], opts: { dropChance?: number; forcedPower?: 
 const run = (w: World, seconds: number, input: Input = NONE): void => {
   for (let i = 0; i < Math.round(seconds * 120); i++) step(w, i === 0 ? input : NONE, DT);
 };
+/** Keeps the level from being won while a test breaks bricks. */
+const sentinel = (w: World): void => {
+  w.bricks.push(mk(901, 490, 70, 'normal', 99));
+};
 const types = (w: World): string[] => w.events.map((e) => e.type);
 const speedOf = (b: { vx: number; vy: number }): number => Math.hypot(b.vx, b.vy);
 const below = (k: Brick, vy = -420) => ball(k.x + k.w / 2, k.y + k.h + 6, 0, vy);
 
 describe('drops', () => {
   it('weighted table is deterministic and matches the weights', () => {
-    expect(pickPower(0)).toBe('expand');
-    expect(pickPower(0.999999)).toBe('stickynote');
+    expect(pickPower(0)).toBe('photocopy');
+    expect(pickPower(0.999999)).toBe('redpen');
     const total = POWER_TYPES.reduce((a, t) => a + CONFIG.dropWeights[t], 0);
-    expect(total).toBe(102);
-    const n = 10200;
+    expect(total).toBe(83);
+    const n = 8300;
     const got: Partial<Record<PowerType, number>> = {};
     for (let i = 0; i < n; i++) {
       const t = pickPower((i + 0.5) / n);
@@ -72,12 +77,12 @@ describe('drops', () => {
   });
 
   it('spawns a 140 u/s capsule at the brick centre; at most 3 fall at once', () => {
-    const w = world([], { dropChance: 1, forcedPower: 'expand' });
+    const w = world([], { dropChance: 1, forcedPower: 'photocopy' });
     const bricks = [0, 1, 2, 3, 4].map((i) => mk(i + 1, 20 + i * 50, 120));
     w.bricks.push(...bricks);
     for (const k of bricks) damageBrick(w, k, 1);
     expect(w.drops).toHaveLength(3);
-    expect(w.drops[0]).toMatchObject({ type: 'expand', x: 44, y: 132, vy: 140 });
+    expect(w.drops[0]).toMatchObject({ type: 'photocopy', x: 44, y: 132, vy: 140 });
   });
 
   it('steel and regenerating bricks never drop', () => {
@@ -93,51 +98,52 @@ describe('drops', () => {
     const w = world();
     w.status = 'serve';
     w.balls[0]!.stuck = true;
-    w.drops.push({ id: 1, type: 'expand', x: w.paddle.x, y: w.paddle.y - 20, vy: 140 });
+    w.drops.push({ id: 1, type: 'ruler', x: w.paddle.x, y: w.paddle.y - 20, vy: 140 });
     run(w, 0.5);
     expect(w.drops).toHaveLength(0);
-    expect(w.paddleLevel).toBe(1);
-    expect(w.paddle.w).toBe(128);
+    expect(w.paddle.w).toBe(160);
+    expect(w.score).toBe(50);
     const e = w.events.find((x) => x.type === 'powerup');
-    expect(e?.power).toBe('expand');
+    expect(e?.power).toBe('ruler');
+  });
+
+  it('catching a hazard gives no bonus; catching a positive one gives +50', () => {
+    const w = world();
+    w.drops.push({ id: 1, type: 'redpen', x: w.paddle.x, y: w.paddle.y - 20, vy: 140 });
+    run(w, 0.3);
+    expect(w.score).toBe(0);
+    expect(w.effects.redpen).toBeDefined();
   });
 
   it('falls past the bottom: removed with powerMiss', () => {
     const w = world();
-    w.drops.push({ id: 1, type: 'shrink', x: 20, y: 940, vy: 140 });
+    w.drops.push({ id: 1, type: 'sharpener', x: 20, y: 940, vy: 140 });
     run(w, 0.6);
     expect(w.drops).toHaveLength(0);
-    expect(w.paddleLevel).toBe(0);
-    expect(w.events.some((x) => x.type === 'powerMiss' && x.power === 'shrink')).toBe(true);
+    expect(w.effects.sharpener).toBeUndefined();
+    expect(w.events.some((x) => x.type === 'powerMiss' && x.power === 'sharpener')).toBe(true);
   });
 });
 
-describe('paddle size', () => {
-  it('levels clamp to -2..+2 with widths 64/80/96/128/160', () => {
-    const w = world();
-    const widths: number[] = [];
-    for (let i = 0; i < 3; i++) {
-      applyPower(w, 'shrink');
-      widths.push(w.paddle.w);
-    }
-    expect(widths).toEqual([80, 64, 64]);
-    for (let i = 0; i < 5; i++) applyPower(w, 'expand');
-    expect(w.paddle.w).toBe(160);
-    expect(w.paddleLevel).toBe(2);
-  });
 
-  it('sharpener x0.7, ruler x1.8, and the paddle is clamped into the walls', () => {
+describe('paddle size', () => {
+  it('base 96; ruler 160; sharpener x0.7; both 112; clamped into the walls', () => {
     const w = world();
+    expect(w.paddle.w).toBe(96);
     applyPower(w, 'sharpener');
     step(w, NONE, DT);
     expect(w.paddle.w).toBeCloseTo(96 * 0.7);
     applyPower(w, 'ruler');
     w.paddle.x = 10;
     step(w, NONE, DT);
-    expect(w.paddle.w).toBeCloseTo(96 * 0.7 * 1.8);
-    expect(w.paddle.x).toBeCloseTo(w.paddle.w / 2);
+    expect(w.paddle.w).toBeCloseTo(112);
+    expect(w.paddle.x).toBeCloseTo(56);
     run(w, 11);
     expect(w.paddle.w).toBe(96);
+    const v = world();
+    applyPower(v, 'ruler');
+    step(v, NONE, DT);
+    expect(v.paddle.w).toBe(160);
   });
 
   it('ruler narrows the max bounce angle to 25 degrees', () => {
@@ -150,18 +156,27 @@ describe('paddle size', () => {
     const b = w.balls[0]!;
     expect((Math.atan2(b.vx, -b.vy) * 180) / Math.PI).toBeCloseTo(25, 3);
   });
-
-  it('inkblot halves paddle speed', () => {
-    const a = world();
-    const b = world();
-    applyPower(b, 'inkblot');
-    step(a, { ...NONE, moveAxis: 1 }, 0.1);
-    step(b, { ...NONE, moveAxis: 1 }, 0.1);
-    expect(b.paddle.x - 270).toBeCloseTo((a.paddle.x - 270) / 2);
-  });
 });
 
 describe('timed effects', () => {
+  it('there are exactly 15 powers and 10 timed ones', () => {
+    expect([...POWER_TYPES].sort()).toEqual([
+      'correction', 'crumpled', 'eraser', 'gluestick', 'goldstar', 'highlighter', 'paperclip', 'photocopy', 'plane',
+      'redpen', 'ruler', 'scissors', 'sharpener', 'stapler', 'stickynote',
+    ]);
+    expect([...EFFECT_NAMES].sort()).toEqual([
+      'crumpled', 'gluestick', 'highlighter', 'paperclip', 'plane', 'redpen', 'ruler', 'scissors', 'sharpener', 'stapler',
+    ]);
+  });
+
+  it('categories and positivity', () => {
+    expect(POWER_CATEGORY.photocopy).toBe('ball');
+    expect(POWER_CATEGORY.gluestick).toBe('paddle');
+    expect(POWER_CATEGORY.goldstar).toBe('utility');
+    expect(POWER_CATEGORY.scissors).toBe('hazard');
+    for (const t of POWER_TYPES) expect(isPositive(t)).toBe(!['sharpener', 'scissors', 'redpen'].includes(t));
+  });
+
   it.each(EFFECT_NAMES)('%s lasts its duration, refreshes, then emits effectEnd', (name: EffectName) => {
     const w = world();
     w.balls = [];
@@ -180,114 +195,94 @@ describe('timed effects', () => {
     expect(w.events.filter((e) => e.type === 'effectEnd' && e.power === name)).toHaveLength(1);
   });
 
-  it('durations match the spec', () => {
+  it('durations and weights match the spec', () => {
     expect(CONFIG.effectSeconds).toEqual({
-      fireball: 10, through: 8, crumpled: 10, catch: 15, laser: 10, inkblot: 6, plane: 5, sharpener: 10, ruler: 8,
+      crumpled: 10, plane: 5, highlighter: 10, ruler: 8, gluestick: 12, stapler: 10, paperclip: 12, sharpener: 10,
+      scissors: 8, redpen: 10,
+    });
+    expect(CONFIG.dropWeights).toEqual({
+      photocopy: 8, crumpled: 6, plane: 5, highlighter: 6, correction: 7, ruler: 8, gluestick: 7, stapler: 7,
+      eraser: 4, goldstar: 3, paperclip: 5, stickynote: 5, sharpener: 4, scissors: 3, redpen: 5,
     });
   });
 });
 
-describe('ball multiplication', () => {
-  it('multiball triples, at +-20 degrees with the same speed', () => {
+describe('photocopy', () => {
+  it('triples every moving ball at +-20 degrees with the same speed', () => {
     const w = world();
-    applyPower(w, 'multiball');
+    applyPower(w, 'photocopy');
     expect(w.balls).toHaveLength(3);
     const ang = w.balls.map((b) => Math.round((Math.atan2(b.vx, -b.vy) * 180) / Math.PI));
     expect(ang.sort((a, b) => a - b)).toEqual([-20, 0, 20]);
     for (const b of w.balls) expect(speedOf(b)).toBeCloseTo(420);
+    applyPower(w, 'photocopy');
+    expect(w.balls).toHaveLength(8);
   });
 
   it('caps at 8 balls', () => {
     const w = world();
-    for (let i = 0; i < 5; i++) applyPower(w, 'multiball');
-    expect(w.balls).toHaveLength(8);
-    applyPower(w, 'split');
+    for (let i = 0; i < 5; i++) applyPower(w, 'photocopy');
     expect(w.balls).toHaveLength(8);
   });
 
-  it('split doubles at +-12 degrees', () => {
+  it('launches stuck (glued) balls first', () => {
     const w = world();
-    applyPower(w, 'split');
-    expect(w.balls).toHaveLength(2);
-    const ang = w.balls.map((b) => Math.round((Math.atan2(b.vx, -b.vy) * 180) / Math.PI)).sort((a, b) => a - b);
-    expect(ang).toEqual([-12, 12]);
-  });
-
-  it('launches stuck (caught) balls first', () => {
-    const w = world();
-    applyPower(w, 'catch');
+    applyPower(w, 'gluestick');
     Object.assign(w.balls[0]!, { stuck: true, stuckOffset: 0, vx: 0, vy: 0 });
-    applyPower(w, 'multiball');
+    applyPower(w, 'photocopy');
     expect(w.balls).toHaveLength(3);
     expect(w.balls.every((b) => !b.stuck && speedOf(b) > 0)).toBe(true);
   });
 });
 
 describe('ball-behaviour effects', () => {
-  it('fireball destroys bricks without bouncing, but steel still bounces', () => {
-    const k = mk(1, 200, 200, 'normal', 3);
-    const k2 = mk(2, 200, 150, 'normal', 1);
+  it('crumpled: 2 damage; a destroyed brick does not bounce the ball, a surviving one does', () => {
+    const k = mk(1, 200, 200, 'normal', 2);
+    const k2 = mk(2, 200, 120, 'normal', 3);
     const w = world([k, k2]);
-    applyPower(w, 'fireball');
+    applyPower(w, 'crumpled');
     w.balls = [below(k)];
-    run(w, 0.4);
-    expect(w.bricks.map((b) => b.id)).toEqual([900]);
-    expect(w.balls[0]!.vy).toBeLessThan(0);
-    expect(w.balls[0]!.vx).toBeCloseTo(0);
-
-    const s = mk(3, 200, 200, 'steel');
-    const w2 = world([s]);
-    applyPower(w2, 'fireball');
-    w2.balls = [below(s)];
-    run(w2, 0.1);
-    expect(w2.balls[0]!.vy).toBeGreaterThan(0);
-    expect(w2.bricks).toContain(s);
-  });
-
-  it('fireball overrides through', () => {
-    const s = mk(3, 200, 200, 'steel');
-    const w = world([s]);
-    applyPower(w, 'through');
-    applyPower(w, 'fireball');
-    w.balls = [below(s)];
-    run(w, 0.1);
+    run(w, 0.3);
+    expect(w.bricks).not.toContain(k);
+    // Carried on upward through the gap, hit k2 (3 hp -> 1) and bounced back.
+    expect(k2.hp).toBe(1);
     expect(w.balls[0]!.vy).toBeGreaterThan(0);
+    const w2 = world([mk(3, 200, 200, 'normal', 3)]);
+    applyPower(w2, 'crumpled');
+    const k3 = w2.bricks[1]!;
+    w2.balls = [below(k3)];
+    run(w2, 0.1);
+    expect(k3.hp).toBe(1);
+    expect(w2.balls[0]!.vy).toBeGreaterThan(0);
   });
 
-  it('through passes bricks, damaging each once per pass; steel takes none', () => {
-    const k = mk(1, 200, 200, 'normal', 3);
-    const s = mk(2, 200, 150, 'steel');
-    const w = world([k, s]);
-    applyPower(w, 'through');
-    w.balls = [below(k)];
-    run(w, 0.3);
-    expect(k.hp).toBe(2);
-    expect(s.hp).toBe(1);
-    expect(w.balls[0]!.vy).toBeLessThan(0);
-    expect(w.balls[0]!.y).toBeLessThan(150);
-    // Second pass damages again.
-    w.balls = [below(k)];
-    run(w, 0.3);
-    expect(k.hp).toBe(1);
-  });
-
-  it('through: a brick is not damaged every substep while overlapped', () => {
-    const k = mk(1, 200, 200, 'normal', 3);
-    const w = world([k]);
-    applyPower(w, 'through');
-    w.balls = [ball(224, 212, 0, -10)];
-    run(w, 0.3);
-    expect(k.hp).toBe(2);
-  });
-
-  it('crumpled does 2 damage per hit and still bounces', () => {
-    const k = mk(1, 200, 200, 'normal', 3);
+  it('crumpled pass-through keeps the ball velocity', () => {
+    const k = mk(1, 200, 200, 'normal', 1);
     const w = world([k]);
     applyPower(w, 'crumpled');
     w.balls = [below(k)];
     run(w, 0.1);
-    expect(k.hp).toBe(1);
+    expect(w.bricks).not.toContain(k);
+    expect(w.balls[0]!.vy).toBeLessThan(0);
+    expect(w.balls[0]!.vx).toBeCloseTo(0);
+  });
+
+  it('crumpled still bounces off clips and a hidden brick is only revealed', () => {
+    const s = mk(1, 200, 200, 'steel');
+    const w = world([s]);
+    applyPower(w, 'crumpled');
+    w.balls = [below(s)];
+    run(w, 0.1);
     expect(w.balls[0]!.vy).toBeGreaterThan(0);
+    const h = mk(2, 200, 200, 'hidden', 2);
+    h.hidden = true;
+    const w2 = world([h]);
+    applyPower(w2, 'crumpled');
+    w2.balls = [below(h)];
+    run(w2, 0.1);
+    expect(h.hidden).toBe(false);
+    expect(w2.bricks).toContain(h);
+    expect(w2.balls[0]!.vy).toBeGreaterThan(0);
   });
 
   it('plane steers toward the nearest brick at <= 3 rad/s, keeping speed', () => {
@@ -315,10 +310,10 @@ describe('ball-behaviour effects', () => {
   });
 });
 
-describe('catch', () => {
+describe('gluestick', () => {
   const caught = (): World => {
     const w = world();
-    applyPower(w, 'catch');
+    applyPower(w, 'gluestick');
     step(w, NONE, DT);
     const p = w.paddle;
     w.balls = [ball(p.x + 30, p.y - CONFIG.ballR + 1, 0, 420)];
@@ -353,113 +348,268 @@ describe('catch', () => {
     expect(w.balls[0]!.stuck).toBe(false);
   });
 
-  it('keeps the stuck offset inside a shrinking paddle', () => {
-    const w = caught();
-    for (let i = 0; i < 2; i++) applyPower(w, 'shrink');
+  it('a glue catch resets the combo', () => {
+    const w = world();
+    applyPower(w, 'gluestick');
+    w.combo = 7;
+    const p = w.paddle;
+    w.balls = [ball(p.x, p.y - CONFIG.ballR + 1, 0, 420)];
     step(w, NONE, DT);
-    expect(Math.abs(w.balls[0]!.stuckOffset)).toBeLessThanOrEqual(w.paddle.w / 2);
+    expect(w.combo).toBe(0);
   });
 });
 
-describe('laser', () => {
-  it('fires two bolts per press, at most one volley per 0.25 s', () => {
+describe('stapler', () => {
+  it('fires 2 staples every 0.4 s automatically, without pressing fire', () => {
     const w = world();
-    applyPower(w, 'laser');
-    step(w, FIRE, DT);
-    expect(w.bolts).toHaveLength(2);
-    expect(w.events.filter((e) => e.type === 'laser')).toHaveLength(1);
-    expect(w.bolts[0]!.x).toBeLessThan(w.paddle.x);
-    expect(w.bolts[1]!.x).toBeGreaterThan(w.paddle.x);
-    step(w, FIRE, DT);
-    expect(w.bolts).toHaveLength(2);
-    run(w, 0.25);
-    step(w, FIRE, DT);
-    expect(w.bolts).toHaveLength(4);
+    applyPower(w, 'stapler');
+    let volleys = 0;
+    for (let i = 0; i < 120; i++) {
+      step(w, NONE, DT);
+      volleys += w.events.filter((e) => e.type === 'staple').length;
+      w.events = [];
+    }
+    // t = 0, 0.4, 0.8 within the first second.
+    expect(volleys).toBe(3);
+    expect(w.bolts.length).toBeGreaterThanOrEqual(2);
+    expect(w.bolts.some((b) => b.x < w.paddle.x)).toBe(true);
+    expect(w.bolts.some((b) => b.x > w.paddle.x)).toBe(true);
   });
 
-  it('bolts travel at 900 u/s, damage a brick once and vanish; hidden gets revealed', () => {
+  it('does not fire while serving, and the fire button does not shoot', () => {
+    const w = world();
+    w.status = 'serve';
+    w.balls[0]!.stuck = true;
+    applyPower(w, 'stapler');
+    run(w, 0.5);
+    expect(w.bolts).toHaveLength(0);
+    const v = world();
+    step(v, FIRE, DT);
+    expect(v.bolts).toHaveLength(0);
+  });
+
+  it('staples travel at 900 u/s, damage a brick once and vanish; hidden gets revealed', () => {
     const k = mk(1, 20, 300, 'normal', 2);
     const h = mk(2, 440, 300, 'hidden', 2);
     h.hidden = true;
     const w = world([k, h]);
     w.paddle.x = 70;
-    applyPower(w, 'laser');
-    step(w, FIRE, DT);
+    applyPower(w, 'stapler');
+    step(w, NONE, DT);
     const y0 = w.bolts[0]!.y;
     step(w, NONE, DT);
     expect(w.bolts[0]!.y).toBeCloseTo(y0 - 7.5);
-    run(w, 1);
+    run(w, 0.7);
     expect(k.hp).toBe(1);
-    expect(w.bolts).toHaveLength(0);
+    w.effects = {};
+    w.bolts = [];
     w.paddle.x = 492;
-    run(w, 0.3);
-    step(w, FIRE, DT);
+    applyPower(w, 'stapler');
     run(w, 1);
     expect(h.hidden).toBe(false);
   });
 
-  it('steel absorbs bolts', () => {
+  it('clips absorb staples', () => {
     const s = mk(1, 20, 300, 'steel');
     const w = world([s]);
     w.paddle.x = 70;
-    applyPower(w, 'laser');
-    step(w, FIRE, DT);
+    applyPower(w, 'stapler');
+    run(w, 0.3);
+    w.effects = {};
     run(w, 1);
     expect(w.bolts).toHaveLength(0);
     expect(w.bricks).toContain(s);
-  });
-
-  it('catch + laser: fire releases the ball and shoots', () => {
-    const w = world();
-    applyPower(w, 'catch');
-    applyPower(w, 'laser');
-    Object.assign(w.balls[0]!, { stuck: true, stuckOffset: 10, vx: 0, vy: 0 });
-    step(w, FIRE, DT);
-    expect(w.balls[0]!.stuck).toBe(false);
-    expect(w.bolts).toHaveLength(2);
-  });
-
-  it('no shooting without the effect', () => {
-    const w = world();
-    step(w, FIRE, DT);
-    expect(w.bolts).toHaveLength(0);
+    expect(w.clipStreak).toBe(0);
   });
 });
 
-describe('speed, lives, eraser, net', () => {
-  it('speedup x1.25 capped, slowdown x0.75 floored at 0.7 start speed; balls rescaled', () => {
-    const w = world();
-    applyPower(w, 'speedup');
-    expect(w.speed).toBeCloseTo(525);
-    expect(speedOf(w.balls[0]!)).toBeCloseTo(525);
-    for (let i = 0; i < 10; i++) applyPower(w, 'speedup');
-    expect(w.speed).toBe(CONFIG.maxSpeed);
-    for (let i = 0; i < 20; i++) applyPower(w, 'slowdown');
-    expect(w.speed).toBeCloseTo(0.7 * CONFIG.startSpeed);
-    expect(speedOf(w.balls[0]!)).toBeCloseTo(0.7 * CONFIG.startSpeed);
+describe('highlighter', () => {
+  const grid = (): { w: World; c: Brick; l: Brick; r: Brick; u: Brick; d: Brick; far: Brick } => {
+    const c = mk(1, 200, 200, 'normal', 3);
+    const l = mk(2, 150, 200, 'normal', 2);
+    const r = mk(3, 250, 200, 'normal', 2);
+    const u = mk(4, 200, 174, 'normal', 2);
+    const d = mk(5, 200, 226, 'normal', 2);
+    const far = mk(6, 300, 200, 'normal', 2);
+    const w = world([c, l, r, u, d, far]);
+    applyPower(w, 'highlighter');
+    return { w, c, l, r, u, d, far };
+  };
+
+  it('splashes 1 damage to the four edge neighbours only', () => {
+    const { w, c, l, r, u, d, far } = grid();
+    w.balls = [below(c)];
+    // d (below c) is in the way; hit it first from underneath instead: aim at c via sideways shot.
+    w.balls = [ball(c.x + c.w / 2, c.y + c.h + 3, 0, -420)];
+    w.bricks = w.bricks.filter((k) => k !== d);
+    step(w, NONE, DT);
+    expect(c.hp).toBe(2);
+    expect([l.hp, r.hp, u.hp]).toEqual([1, 1, 1]);
+    expect(far.hp).toBe(2);
+    expect(types(w)).toContain('splash');
   });
 
-  it('extralife adds one, max 9', () => {
+  it('diagonal and gapped bricks are not neighbours', () => {
+    const w = world([mk(1, 200, 200), mk(2, 250, 226), mk(3, 258, 200), mk(4, 200, 253)]);
+    expect(edgeNeighbours(w, w.bricks[1]!).map((k) => k.id)).toEqual([]);
+  });
+
+  it('reveals hidden bricks, detonates bombs, ignores clips, and does not recurse', () => {
+    const c = mk(1, 200, 200, 'normal', 2);
+    const h = mk(2, 150, 200, 'hidden', 2);
+    h.hidden = true;
+    const x = mk(3, 250, 200, 'explosive', 1);
+    const s = mk(4, 200, 174, 'steel');
+    const next = mk(5, 100, 200, 'normal', 2); // neighbour of h, not of c
+    const w = world([c, h, x, s, next]);
+    applyPower(w, 'highlighter');
+    w.balls = [ball(c.x + c.w / 2, c.y + c.h + 3, 0, -420)];
+    step(w, NONE, DT);
+    expect(h.hidden).toBe(false);
+    expect(w.bricks).not.toContain(x);
+    expect(types(w)).toContain('explode');
+    expect(w.bricks).toContain(s);
+    expect(next.hp).toBe(2);
+  });
+
+  it('splash damage can break neighbours and scores them', () => {
+    const c = mk(1, 200, 200, 'normal', 2);
+    const n = mk(2, 250, 200, 'normal', 1);
+    const w = world([c, n]);
+    applyPower(w, 'highlighter');
+    w.balls = [ball(c.x + c.w / 2, c.y + c.h + 3, 0, -420)];
+    step(w, NONE, DT);
+    expect(w.bricks).not.toContain(n);
+    expect(w.score).toBe(10 + 10);
+  });
+});
+
+describe('correction, goldstar, redpen', () => {
+  it('correction takes 30% off, floored at 0.7 x start speed; balls rescaled', () => {
     const w = world();
-    applyPower(w, 'extralife');
+    w.speed = 800;
+    w.balls[0]!.vy = -800;
+    applyPower(w, 'correction');
+    expect(w.speed).toBeCloseTo(560);
+    expect(speedOf(w.balls[0]!)).toBeCloseTo(560);
+    for (let i = 0; i < 20; i++) applyPower(w, 'correction');
+    expect(w.speed).toBeCloseTo(0.7 * CONFIG.startSpeed);
+  });
+
+  it('goldstar adds one life, max 9', () => {
+    const w = world();
+    applyPower(w, 'goldstar');
     expect(w.lives).toBe(4);
-    for (let i = 0; i < 10; i++) applyPower(w, 'extralife');
+    for (let i = 0; i < 10; i++) applyPower(w, 'goldstar');
     expect(w.lives).toBe(9);
   });
 
-  it('killpaddle loses a life immediately', () => {
+  it('redpen: x1.25 speed once, reverts on expiry (not below start); re-catch only refreshes', () => {
     const w = world();
-    applyPower(w, 'killpaddle');
-    expect(w.lives).toBe(2);
-    expect(w.status).toBe('serve');
-    expect(types(w)).toContain('lifeLost');
-    expect(w.balls).toHaveLength(1);
-    expect(w.balls[0]!.stuck).toBe(true);
-    w.lives = 1;
-    applyPower(w, 'killpaddle');
-    expect(w.status).toBe('gameover');
+    applyPower(w, 'redpen');
+    expect(w.speed).toBeCloseTo(525);
+    expect(speedOf(w.balls[0]!)).toBeCloseTo(525);
+    run(w, 5);
+    applyPower(w, 'redpen');
+    expect(w.speed).toBeCloseTo(525);
+    expect(w.effects.redpen).toBe(CONFIG.effectSeconds.redpen);
+    run(w, 10.1);
+    expect(w.effects.redpen).toBeUndefined();
+    expect(w.speed).toBeCloseTo(420);
+    expect(speedOf(w.balls[0]!)).toBeCloseTo(420, 0);
   });
 
+  it('redpen caps at max speed and never reverts below start speed', () => {
+    const w = world();
+    w.speed = 900;
+    applyPower(w, 'redpen');
+    expect(w.speed).toBe(1000);
+    const v = world();
+    applyPower(v, 'redpen');
+    v.speed = 430;
+    run(v, 10.1);
+    expect(v.speed).toBe(420);
+  });
+
+  it('redpen doubles points', () => {
+    const k = mk(1, 200, 200, 'normal', 1);
+    const w = world([k]);
+    sentinel(w);
+    applyPower(w, 'redpen');
+    damageBrick(w, k, 1);
+    expect(w.score).toBe(20);
+  });
+});
+
+describe('scissors', () => {
+  it('the gap is 24 wide at the centre: a ball over it falls through', () => {
+    const w = world();
+    applyPower(w, 'scissors');
+    step(w, NONE, DT);
+    const p = w.paddle;
+    w.balls = [ball(p.x, p.y - 30, 0, 420)];
+    run(w, 0.6);
+    expect(w.status).toBe('serve');
+    expect(w.lives).toBe(2);
+  });
+
+  it('a ball over a segment bounces, with the angle mapped across the full width', () => {
+    const w = world();
+    applyPower(w, 'scissors');
+    step(w, NONE, DT);
+    const p = w.paddle;
+    w.balls = [ball(p.x + 40, p.y - CONFIG.ballR + 1, 0, 420)];
+    step(w, NONE, DT);
+    const b = w.balls[0]!;
+    expect(b.vy).toBeLessThan(0);
+    expect((Math.atan2(b.vx, -b.vy) * 180) / Math.PI).toBeCloseTo((40 / 48) * 60, 3);
+  });
+
+  it('capsules over the gap fall through, over a segment are caught', () => {
+    const w = world();
+    applyPower(w, 'scissors');
+    step(w, NONE, DT);
+    w.drops.push({ id: 1, type: 'goldstar', x: w.paddle.x, y: w.paddle.y - 20, vy: 140 });
+    run(w, 0.5);
+    expect(w.lives).toBe(3);
+    expect(w.events.some((e) => e.type === 'powerMiss')).toBe(false);
+    run(w, 0.6);
+    expect(w.events.some((e) => e.type === 'powerMiss')).toBe(true);
+    w.drops.push({ id: 2, type: 'goldstar', x: w.paddle.x + 30, y: w.paddle.y - 20, vy: 140 });
+    run(w, 0.3);
+    expect(w.lives).toBe(4);
+  });
+});
+
+describe('paperclip', () => {
+  it('pulls positive capsules within 220 px toward the paddle at up to 260 px/s', () => {
+    const w = world();
+    applyPower(w, 'paperclip');
+    w.drops.push({ id: 1, type: 'goldstar', x: w.paddle.x + 150, y: w.paddle.y - 100, vy: 0 });
+    step(w, NONE, DT);
+    expect(w.drops[0]!.x).toBeCloseTo(w.paddle.x + 150 - 260 * DT);
+    run(w, 1);
+    expect(Math.abs(w.drops[0] ? w.drops[0].x - w.paddle.x : 0)).toBeLessThan(1);
+  });
+
+  it('ignores far capsules and hazards, and does nothing without the effect', () => {
+    const w = world();
+    applyPower(w, 'paperclip');
+    w.drops.push(
+      { id: 1, type: 'goldstar', x: w.paddle.x + 200, y: w.paddle.y - 300, vy: 0 },
+      { id: 2, type: 'scissors', x: w.paddle.x + 50, y: w.paddle.y - 100, vy: 0 },
+    );
+    run(w, 0.5);
+    expect(w.drops[0]!.x).toBe(w.paddle.x + 200);
+    expect(w.drops[1]!.x).toBe(w.paddle.x + 50);
+    const v = world();
+    v.drops.push({ id: 1, type: 'goldstar', x: v.paddle.x + 100, y: v.paddle.y - 100, vy: 0 });
+    run(v, 0.5);
+    expect(v.drops[0]!.x).toBe(v.paddle.x + 100);
+  });
+});
+
+describe('eraser, stickynote', () => {
   it('eraser destroys the lowest row except steel, scoring and emitting', () => {
     const w = world([
       mk(1, 20, 120), mk(2, 70, 120),
@@ -470,7 +620,8 @@ describe('speed, lives, eraser, net', () => {
     expect(w.events.filter((e) => e.type === 'brickBreak')).toHaveLength(3);
     const e = w.events.find((x) => x.type === 'eraser')!;
     expect(e.y).toBe(212);
-    expect(w.score).toBe(10 + 20 + 10);
+    // 10 + 20 (regen scores 0); the 2nd break is the 2nd of the combo, still 1x.
+    expect(w.score).toBe(30);
     expect(w.ghosts).toHaveLength(1);
   });
 
@@ -499,13 +650,174 @@ describe('speed, lives, eraser, net', () => {
   });
 });
 
-describe('life lost clears everything', () => {
-  it('drops, effects, bolts, net and size level reset', () => {
+describe('scoring', () => {
+  it('10 per hp removed (a 3-hp marker is 30 in total) and rounded to an integer', () => {
+    const k = mk(1, 200, 200, 'normal', 3);
+    const w = world([k]);
+    sentinel(w);
+    damageBrick(w, k, 1);
+    damageBrick(w, k, 1);
+    expect(w.score).toBe(20);
+    damageBrick(w, k, 1);
+    expect(w.score).toBe(30);
+    expect(Number.isInteger(w.score)).toBe(true);
+  });
+
+  it('combo multiplier steps at 3, 6 and 9 breaks, evaluated before the break is added', () => {
     const w = world();
-    for (const t of ['laser', 'fireball', 'catch', 'stickynote', 'expand', 'ruler'] as PowerType[]) applyPower(w, t);
+    sentinel(w);
+    const m: number[] = [];
+    const awards: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const k = mk(100 + i, 20 + i * 2, 120);
+      w.bricks.push(k);
+      const before = w.score;
+      damageBrick(w, k, 1);
+      awards.push(w.score - before);
+      m.push(comboMultiplier(w));
+    }
+    expect(awards).toEqual([10, 10, 10, 15, 15, 15, 20, 20, 20, 30, 30]);
+    expect(m.slice(0, 3)).toEqual([1, 1, 1.5]);
+    expect(w.events.filter((e) => e.type === 'combo').map((e) => e.value)).toEqual([1.5, 2, 3]);
+  });
+
+  it('combo resets when any ball touches the paddle', () => {
+    const w = world();
+    w.combo = 9;
+    expect(comboMultiplier(w)).toBe(3);
+    const p = w.paddle;
+    w.balls = [ball(p.x, p.y - CONFIG.ballR + 1, 0, 420)];
+    step(w, NONE, DT);
+    expect(w.combo).toBe(0);
+    expect(comboMultiplier(w)).toBe(1);
+  });
+
+  it('regenerating bricks score 0 and do not build the combo', () => {
+    const k = mk(1, 200, 200, 'regen', 1);
+    const w = world([k]);
+    sentinel(w);
+    damageBrick(w, k, 1);
+    expect(w.score).toBe(0);
+    expect(w.combo).toBe(0);
+    expect(w.drops).toHaveLength(0);
+  });
+
+  it('staple, blast and splash points use the combo too', () => {
+    const w = world();
+    sentinel(w);
+    w.combo = 9;
+    const k = mk(1, 200, 200, 'normal', 1);
+    w.bricks.push(k);
+    damageBrick(w, k, 1);
+    expect(w.score).toBe(30);
+    const x = mk(2, 100, 200, 'explosive', 1);
+    const n = mk(3, 150, 200, 'normal', 1);
+    w.bricks.push(x, n);
+    damageBrick(w, x, 1);
+    expect(w.score).toBe(30 + 30 + 30);
+  });
+
+  it('+250 per remaining life on a win', () => {
+    const k = mk(1, 200, 200, 'normal', 1);
+    const w = world([k]);
+    damageBrick(w, k, 1);
+    expect(w.status).toBe('won');
+    expect(w.score).toBe(10 + 250 * 3);
+  });
+
+  it('an extra life every 10,000 points crossed, max 9', () => {
+    const w = world();
+    sentinel(w);
+    w.score = 9990;
+    const k = mk(1, 200, 200, 'normal', 1);
+    w.bricks.push(k);
+    damageBrick(w, k, 1);
+    expect(w.lives).toBe(4);
+    expect(types(w)).toContain('extraLife');
+    w.score = 19990;
+    const k2 = mk(2, 260, 200, 'normal', 1);
+    w.bricks.push(k2);
+    damageBrick(w, k2, 1);
+    expect(w.lives).toBe(5);
+    w.lives = 9;
+    w.score = 29990;
+    const k3 = mk(3, 320, 200, 'normal', 1);
+    w.bricks.push(k3);
+    damageBrick(w, k3, 1);
+    expect(w.lives).toBe(9);
+  });
+});
+
+describe('clip anti-softlock', () => {
+  const hitClip = (w: World, s: Brick): void => {
+    w.balls = [below(s)];
+    run(w, 0.05);
+  };
+
+  it('pops clips with >= 3 streak hits on the 10th clip hit', () => {
+    const a = mk(1, 100, 200, 'steel');
+    const b = mk(2, 300, 200, 'steel');
+    const w = world([a, b]);
+    // 3 hits on a, 6 on b, then the 10th on b.
+    for (let i = 0; i < 3; i++) hitClip(w, a);
+    expect(types(w)).toContain('clipLoose');
+    expect(a.streakHits).toBe(3);
+    for (let i = 0; i < 6; i++) hitClip(w, b);
+    expect(w.clipStreak).toBe(9);
+    expect(w.bricks).toContain(a);
+    hitClip(w, b);
+    expect(w.bricks).not.toContain(a);
+    expect(w.bricks).not.toContain(b);
+    expect(types(w).filter((t) => t === 'clipPop')).toHaveLength(2);
+    expect(w.clipStreak).toBe(0);
+  });
+
+  it('keeps clips below 3 hits, and resets all counters', () => {
+    const a = mk(1, 100, 200, 'steel');
+    const b = mk(2, 300, 200, 'steel');
+    const w = world([a, b]);
+    hitClip(w, a);
+    hitClip(w, a);
+    for (let i = 0; i < 8; i++) hitClip(w, b);
+    expect(w.bricks).toContain(a);
+    expect(a.streakHits).toBe(0);
+    expect(w.clipStreak).toBe(0);
+  });
+
+  it('damaging a breakable brick (any source) resets the streak; paddle bounces do not', () => {
+    const a = mk(1, 100, 200, 'steel');
+    const k = mk(2, 300, 200, 'normal', 2);
+    const w = world([a, k]);
+    for (let i = 0; i < 4; i++) hitClip(w, a);
+    expect(w.clipStreak).toBe(4);
+    const p = w.paddle;
+    w.balls = [ball(p.x, p.y - CONFIG.ballR + 1, 0, 420)];
+    step(w, NONE, DT);
+    expect(w.clipStreak).toBe(4);
+    damageBrick(w, k, 1);
+    expect(w.clipStreak).toBe(0);
+    expect(a.streakHits).toBe(0);
+  });
+
+  it('clips never count toward winning', () => {
+    const a = mk(1, 100, 200, 'steel');
+    const k = mk(2, 300, 200, 'normal', 1);
+    const w = world([a, k]);
+    damageBrick(w, k, 1);
+    expect(w.status).toBe('won');
+  });
+});
+
+describe('life lost clears everything', () => {
+  it('drops, effects, bolts, net, combo and clip streak reset', () => {
+    const w = world();
+    for (const t of ['stapler', 'crumpled', 'gluestick', 'stickynote', 'redpen', 'ruler'] as PowerType[]) applyPower(w, t);
     w.bolts.push({ x: 10, y: 500 });
-    w.drops.push({ id: 5, type: 'extralife', x: 10, y: 100, vy: 140 });
+    w.drops.push({ id: 5, type: 'goldstar', x: 10, y: 100, vy: 140 });
     w.net = false; // let the ball fall
+    w.combo = 5;
+    w.clipStreak = 4;
+    w.bricks[0]!.streakHits = 2;
     w.balls = [ball(20, 975, 0, 300)];
     step(w, NONE, DT);
     expect(w.lives).toBe(2);
@@ -513,7 +825,9 @@ describe('life lost clears everything', () => {
     expect(w.bolts).toEqual([]);
     expect(w.effects).toEqual({});
     expect(w.net).toBe(false);
-    expect(w.paddleLevel).toBe(0);
+    expect(w.combo).toBe(0);
+    expect(w.clipStreak).toBe(0);
+    expect(w.bricks[0]!.streakHits).toBe(0);
     expect(w.paddle.w).toBe(96);
   });
 });

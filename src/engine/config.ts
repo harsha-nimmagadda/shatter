@@ -1,11 +1,26 @@
 export const POWER_TYPES = [
-  'expand', 'shrink', 'multiball', 'fireball', 'catch', 'laser', 'speedup', 'slowdown', 'extralife',
-  'killpaddle', 'split', 'through', 'eraser', 'inkblot', 'plane', 'sharpener', 'ruler', 'crumpled', 'stickynote',
+  'photocopy', 'crumpled', 'plane', 'highlighter', 'correction', 'ruler', 'gluestick', 'stapler', 'eraser',
+  'goldstar', 'paperclip', 'stickynote', 'sharpener', 'scissors', 'redpen',
 ] as const;
 export type PowerType = (typeof POWER_TYPES)[number];
 
+export type PowerCategory = 'ball' | 'paddle' | 'utility' | 'hazard';
+
+/** Badge colour category: ball = blue, paddle = green, utility = gold, hazard = red. */
+export const POWER_CATEGORY: Record<PowerType, PowerCategory> = {
+  photocopy: 'ball', crumpled: 'ball', plane: 'ball', highlighter: 'ball', correction: 'ball',
+  ruler: 'paddle', gluestick: 'paddle', stapler: 'paddle',
+  eraser: 'utility', goldstar: 'utility', paperclip: 'utility', stickynote: 'utility',
+  sharpener: 'hazard', scissors: 'hazard', redpen: 'hazard',
+};
+
+/** Positive power-ups give +50 when caught; hazards do not. */
+export const isPositive = (type: PowerType): boolean => POWER_CATEGORY[type] !== 'hazard';
+
 /** Power-ups that run on a timer (seconds remaining live in world.effects). */
-export const EFFECT_NAMES = ['fireball', 'through', 'crumpled', 'catch', 'laser', 'inkblot', 'plane', 'sharpener', 'ruler'] as const;
+export const EFFECT_NAMES = [
+  'crumpled', 'plane', 'highlighter', 'ruler', 'gluestick', 'stapler', 'paperclip', 'sharpener', 'scissors', 'redpen',
+] as const;
 export type EffectName = (typeof EFFECT_NAMES)[number];
 
 /** All gameplay tunables. Units are logical playfield units (540 x 960) and seconds. */
@@ -39,27 +54,35 @@ export const CONFIG = {
   dropW: 36,
   dropH: 20,
   dropWeights: {
-    expand: 10, shrink: 5, multiball: 8, fireball: 5, catch: 8, laser: 7, speedup: 5, slowdown: 7, extralife: 3,
-    killpaddle: 2, split: 6, through: 4, eraser: 4, inkblot: 4, plane: 5, sharpener: 4, ruler: 5, crumpled: 5,
-    stickynote: 5,
+    photocopy: 8, crumpled: 6, plane: 5, highlighter: 6, correction: 7, ruler: 8, gluestick: 7, stapler: 7,
+    eraser: 4, goldstar: 3, paperclip: 5, stickynote: 5, sharpener: 4, scissors: 3, redpen: 5,
   } as Record<PowerType, number>,
   effectSeconds: {
-    fireball: 10, through: 8, crumpled: 10, catch: 15, laser: 10, inkblot: 6, plane: 5, sharpener: 10, ruler: 8,
+    crumpled: 10, plane: 5, highlighter: 10, ruler: 8, gluestick: 12, stapler: 10, paperclip: 12, sharpener: 10,
+    scissors: 8, redpen: 10,
   } as Record<EffectName, number>,
-  /** Paddle widths for size levels -2..+2. */
-  paddleWidths: [64, 80, 96, 128, 160],
   sharpenerMul: 0.7,
-  rulerMul: 1.8,
+  rulerW: 160,
   rulerMaxBounceDeg: 25,
-  inkblotSpeedMul: 0.5,
+  scissorsGap: 24,
+  staplerInterval: 0.4,
+  paperclipRange: 220,
+  paperclipSpeed: 260,
+  redpenMul: 1.25,
+  correctionMul: 0.7,
+  catchBonus: 50,
+  winLifeBonus: 250,
+  extraLifeEvery: 10000,
+  /** Combo multiplier steps: [min breaks, multiplier], highest first. */
+  comboSteps: [[9, 3], [6, 2], [3, 1.5]] as readonly (readonly [number, number])[],
+  clipPopStreak: 10,
+  clipLooseHits: 3,
   maxBalls: 8,
   maxLives: 9,
-  multiballDeg: 20,
-  splitDeg: 12,
-  slowdownFloor: 0.7,
-  catchAutoRelease: 3,
-  laserSpeed: 900,
-  laserCooldown: 0.25,
+  photocopyDeg: 20,
+  correctionFloor: 0.7,
+  glueAutoRelease: 3,
+  stapleSpeed: 900,
   planeTurn: 3,
   /** Sticky-note net: ball bottom bounces at height - netInset. */
   netInset: 24,

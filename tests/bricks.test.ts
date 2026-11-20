@@ -11,7 +11,7 @@ function mk(id: number, x: number, y: number, type: BrickType = 'normal', hp = 1
   const h = type === 'hidden' ? 2 : hp;
   return {
     id, x, y, w: 48, h: 24, hp: h, maxHp: h, kind: type === 'steel' ? 'steel' : 'normal', type,
-    vx: type === 'moving' ? CONFIG.movingSpeed : 0, hidden: type === 'hidden', seed: id,
+    vx: type === 'moving' ? CONFIG.movingSpeed : 0, hidden: type === 'hidden', streakHits: 0, seed: id,
   };
 }
 
@@ -175,7 +175,7 @@ describe('hidden bricks', () => {
     Object.assign(w.balls[0]!, shoot(h));
     step(w, NONE, DT);
     expect(ids(w)).not.toContain(1);
-    expect(w.score).toBe(20);
+    expect(w.score).toBe(20 + 250 * 3); // 20 for the brick + win bonus
   });
 
   it('counts for winning', () => {

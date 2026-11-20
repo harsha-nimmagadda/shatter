@@ -6,7 +6,7 @@ const NONE: Input = { paddleX: null, moveAxis: 0, fire: false };
 const FIRE: Input = { ...NONE, fire: true };
 
 function brick(id: number, x: number, y: number, hp = 3, kind: 'normal' | 'steel' = 'normal'): Brick {
-  return { id, x, y, w: 48, h: 24, hp, maxHp: hp, kind, type: kind, vx: 0, hidden: false, seed: id };
+  return { id, x, y, w: 48, h: 24, hp, maxHp: hp, kind, type: kind, vx: 0, hidden: false, streakHits: 0, seed: id };
 }
 
 /** Playing world with one ball and the given bricks (a far-away dummy keeps the level from winning). */

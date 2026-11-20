@@ -3,8 +3,7 @@ import { enforceMinVertical, followPaddle, launchServe } from './balls';
 import { processBlasts, updateGhosts, updateMovingBricks } from './bricks';
 import { collideBricks, collideNet, collidePaddle, collideWalls } from './collide';
 import { loseLife } from './life';
-import { paddleSpeedMul } from './paddle';
-import { handleFire, steerBalls, updateBolts, updateCaught, updateDrops, updateEffects } from './powerups';
+import { handleFire, steerBalls, updateBolts, updateCaught, updateDrops, updateEffects, updateStapler } from './powerups';
 import type { Ball, GameEvent, Input, World } from './state';
 
 /** Returns and clears the accumulated events. Call once per rendered frame. */
@@ -39,6 +38,7 @@ export function step(world: World, input: Input, dt: number): void {
     for (const ball of world.balls) {
       if (world.status === 'playing' && !ball.stuck) moveBall(world, ball, dt);
     }
+    updateStapler(world, dt);
     updateBolts(world, dt);
   }
   if (world.status === 'serve' || world.status === 'playing') updateDrops(world, dt);
@@ -48,11 +48,10 @@ export function step(world: World, input: Input, dt: number): void {
 
 function movePaddle(w: World, input: Input, dt: number): void {
   const p = w.paddle;
-  const mul = paddleSpeedMul(w);
   if (input.moveAxis !== 0) {
-    p.x += input.moveAxis * C.paddleKeySpeed * mul * dt;
+    p.x += input.moveAxis * C.paddleKeySpeed * dt;
   } else if (input.paddleX !== null) {
-    const max = C.paddleMaxSpeed * mul * dt;
+    const max = C.paddleMaxSpeed * dt;
     p.x += Math.max(-max, Math.min(max, input.paddleX - p.x));
   }
   p.x = Math.max(p.w / 2, Math.min(w.width - p.w / 2, p.x));

@@ -13,7 +13,7 @@ const ONE_TO_ONE: Partial<Record<GameEvent['type'], string>> = {
   paddle: 'paddle',
   explode: 'explode',
   launch: 'launch',
-  laser: 'laser',
+  staple: 'laser', // TODO(render-revamp): dedicated staple / clip / combo SFX
   eraser: 'eraser',
   lifeLost: 'lifelost',
   gameover: 'gameover',

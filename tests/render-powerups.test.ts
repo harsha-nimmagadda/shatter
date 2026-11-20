@@ -19,17 +19,16 @@ describe('icon mapping', () => {
   it('covers every engine power type', () => {
     for (const t of POWER_TYPES) expect(t in ICON_IDS, t).toBe(true);
   });
-  it('maps to ids that exist in the manifest (except the procedural shrink)', () => {
+  it('maps to ids that exist in the manifest (except the procedural ones)', () => {
     for (const t of POWER_TYPES) {
       const id = ICON_IDS[t];
-      if (t === 'shrink') expect(id).toBeNull();
+      if (id === null) expect(['highlighter', 'paperclip']).toContain(t);
       else expect(Object.keys(manifest)).toContain(id);
     }
   });
   it('falls back when art is missing, and never throws on unknown types', () => {
-    expect(resolveIcon('laser', () => true)).toEqual({ source: 'art', id: 'icon-laser' });
-    expect(resolveIcon('laser', () => false).source).toBe('doodle');
-    expect(resolveIcon('shrink', () => true).source).toBe('arrows');
+    expect(resolveIcon('stapler', () => true)).toEqual({ source: 'art', id: 'icon-laser' });
+    expect(resolveIcon('stapler', () => false).source).toBe('doodle');
     expect(resolveIcon('nope', () => true).source).toBe('doodle');
   });
   it('has a name for every power', () => {
@@ -39,11 +38,11 @@ describe('icon mapping', () => {
 });
 
 describe('good / bad', () => {
-  it('classifies the five bad power-ups', () => {
-    for (const t of ['shrink', 'killpaddle', 'speedup', 'inkblot', 'sharpener']) expect(isBadPower(t)).toBe(true);
+  it('classifies the three hazards', () => {
+    for (const t of ['sharpener', 'scissors', 'redpen']) expect(isBadPower(t)).toBe(true);
     for (const t of POWER_TYPES) expect(isBadPower(t)).toBe(BAD_POWERS.has(t));
-    expect(isBadPower('multiball')).toBe(false);
-    expect(isBadPower('extralife')).toBe(false);
+    expect(isBadPower('photocopy')).toBe(false);
+    expect(isBadPower('goldstar')).toBe(false);
   });
 });
 

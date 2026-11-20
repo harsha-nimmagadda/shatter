@@ -1,8 +1,7 @@
-import { CONFIG as C, EFFECT_NAMES, type EffectName, type PowerType } from './config';
+import { CONFIG as C, EFFECT_NAMES, isPositive, type EffectName, type PowerType } from './config';
 import { DEG, clamp, releaseAll, releaseBall, releaseCaught, rotate, setSpeed } from './balls';
-import { counts, damageBrick, destroyBrick } from './bricks';
-import { loseLife } from './life';
-import { applyPaddleWidth } from './paddle';
+import { addScore, counts, damageBrick, destroyBrick } from './bricks';
+import { applyPaddleWidth, paddleSegments } from './paddle';
 import type { Ball, Brick, Drop, World } from './state';
 
 const isEffect = (t: PowerType): t is EffectName => (EFFECT_NAMES as readonly string[]).includes(t);
@@ -10,36 +9,23 @@ const isEffect = (t: PowerType): t is EffectName => (EFFECT_NAMES as readonly st
 /** Applies a caught power-up. */
 export function applyPower(w: World, type: PowerType): void {
   if (isEffect(type)) {
+    const wasActive = w.effects[type] !== undefined;
     w.effects[type] = C.effectSeconds[type];
+    if (type === 'stapler' && !wasActive) w.stapleCd = 0;
+    // Red Pen: one speed boost only; re-catching just refreshes the timer.
+    if (type === 'redpen' && !wasActive) scaleSpeed(w, Math.min(C.maxSpeed, w.speed * C.redpenMul));
     applyPaddleWidth(w);
     return;
   }
   switch (type) {
-    case 'expand':
-      w.paddleLevel = Math.min(2, w.paddleLevel + 1);
-      applyPaddleWidth(w);
+    case 'photocopy':
+      photocopy(w);
       break;
-    case 'shrink':
-      w.paddleLevel = Math.max(-2, w.paddleLevel - 1);
-      applyPaddleWidth(w);
+    case 'correction':
+      scaleSpeed(w, Math.max(C.correctionFloor * C.startSpeed, w.speed * C.correctionMul));
       break;
-    case 'multiball':
-      multiply(w, 2, C.multiballDeg);
-      break;
-    case 'split':
-      multiply(w, 1, C.splitDeg);
-      break;
-    case 'speedup':
-      scaleSpeed(w, Math.min(C.maxSpeed, w.speed * 1.25));
-      break;
-    case 'slowdown':
-      scaleSpeed(w, Math.max(C.slowdownFloor * C.startSpeed, w.speed * 0.75));
-      break;
-    case 'extralife':
+    case 'goldstar':
       w.lives = Math.min(C.maxLives, w.lives + 1);
-      break;
-    case 'killpaddle':
-      loseLife(w);
       break;
     case 'eraser':
       eraseLowestRow(w);
@@ -55,26 +41,20 @@ function scaleSpeed(w: World, speed: number): void {
   for (const b of w.balls) if (!b.stuck) setSpeed(b, speed);
 }
 
-/** Multiball / split: launches stuck balls, then adds clones at +-deg (capped). `extra` = clones per ball. */
-function multiply(w: World, extra: number, deg: number): void {
+/** Photocopy: launches stuck balls, then every moving ball becomes 3 (clones at +-deg), capped. */
+function photocopy(w: World): void {
   releaseAll(w);
   const base = w.balls.filter((b) => !b.stuck);
   for (const b of base) {
     const room = C.maxBalls - w.balls.length;
     if (room <= 0) break;
-    const clone: Ball = { ...b, overlap: [] };
-    if (extra === 1) {
-      rotate(b, deg * DEG);
-      rotate(clone, -deg * DEG);
-      w.balls.push(clone);
-    } else {
-      rotate(clone, deg * DEG);
-      w.balls.push(clone);
-      if (room >= 2) {
-        const other: Ball = { ...b, overlap: [] };
-        rotate(other, -deg * DEG);
-        w.balls.push(other);
-      }
+    const clone: Ball = { ...b };
+    rotate(clone, C.photocopyDeg * DEG);
+    w.balls.push(clone);
+    if (room >= 2) {
+      const other: Ball = { ...b };
+      rotate(other, -C.photocopyDeg * DEG);
+      w.balls.push(other);
     }
   }
 }
@@ -90,15 +70,16 @@ function eraseLowestRow(w: World): void {
   for (const k of row) destroyBrick(w, k, 'eraser');
 }
 
-/** Ticks effect timers and the laser cooldown, then refreshes the paddle width. */
+/** Ticks effect timers and the stapler cooldown, then refreshes the paddle width. */
 export function updateEffects(w: World, dt: number): void {
-  w.laserCd = Math.max(0, w.laserCd - dt);
+  w.stapleCd = Math.max(0, w.stapleCd - dt);
   for (const name of EFFECT_NAMES) {
     const left = w.effects[name];
     if (left === undefined) continue;
     if (left - dt <= 0) {
       delete w.effects[name];
       w.events.push({ type: 'effectEnd', x: w.paddle.x, y: w.paddle.y, power: name });
+      if (name === 'redpen') scaleSpeed(w, Math.max(C.startSpeed, w.speed / C.redpenMul));
     } else {
       w.effects[name] = left - dt;
     }
@@ -106,21 +87,30 @@ export function updateEffects(w: World, dt: number): void {
   applyPaddleWidth(w);
 }
 
-/** Falls capsules; applies caught ones, removes missed ones. */
+/** Falls capsules (paperclip pulls positive ones in); applies caught ones, removes missed ones. */
 export function updateDrops(w: World, dt: number): void {
   let i = 0;
+  const p = w.paddle;
+  const pull = w.effects.paperclip !== undefined;
+  const segs = paddleSegments(w);
+  const gap = w.effects.scissors !== undefined;
   while (i < w.drops.length) {
     const d: Drop = w.drops[i]!;
     d.y += d.vy * dt;
-    const p = w.paddle;
+    if (pull && isPositive(d.type) && Math.hypot(d.x - p.x, d.y - (p.y + p.h / 2)) < C.paperclipRange) {
+      const dx = p.x - d.x;
+      d.x += Math.sign(dx) * Math.min(Math.abs(dx), C.paperclipSpeed * dt);
+    }
+    const inY = d.y + C.dropH / 2 > p.y && d.y - C.dropH / 2 < p.y + p.h;
+    // With the scissors gap open, a capsule centred over the gap falls through.
     const caught =
-      d.x + C.dropW / 2 > p.x - p.w / 2 &&
-      d.x - C.dropW / 2 < p.x + p.w / 2 &&
-      d.y + C.dropH / 2 > p.y &&
-      d.y - C.dropH / 2 < p.y + p.h;
+      inY &&
+      !(gap && Math.abs(d.x - p.x) < C.scissorsGap / 2) &&
+      segs.some(([l, r]) => d.x + C.dropW / 2 > l && d.x - C.dropW / 2 < r);
     if (caught) {
       w.drops.splice(i, 1);
       w.events.push({ type: 'powerup', x: d.x, y: d.y, power: d.type });
+      if (isPositive(d.type)) addScore(w, C.catchBonus, d.x, d.y);
       applyPower(w, d.type);
     } else if (d.y - C.dropH / 2 > w.height) {
       w.drops.splice(i, 1);
@@ -131,16 +121,19 @@ export function updateDrops(w: World, dt: number): void {
   }
 }
 
-/** Fire press while playing: release caught balls and/or shoot the laser. */
+/** Fire press while playing: release glued balls (the stapler fires by itself). */
 export function handleFire(w: World): void {
   releaseCaught(w);
-  if (w.effects.laser !== undefined && w.laserCd <= 0) {
-    const p = w.paddle;
-    const inset = 6;
-    w.bolts.push({ x: p.x - p.w / 2 + inset, y: p.y }, { x: p.x + p.w / 2 - inset, y: p.y });
-    w.laserCd = C.laserCooldown;
-    w.events.push({ type: 'laser', x: p.x, y: p.y });
-  }
+}
+
+/** Stapler: while active and playing, shoots 2 staples from the paddle ends every 0.4 s. */
+export function updateStapler(w: World, _dt: number): void {
+  if (w.effects.stapler === undefined || w.status !== 'playing' || w.stapleCd > 0) return;
+  const p = w.paddle;
+  const inset = 6;
+  w.bolts.push({ x: p.x - p.w / 2 + inset, y: p.y }, { x: p.x + p.w / 2 - inset, y: p.y });
+  w.stapleCd = C.staplerInterval;
+  w.events.push({ type: 'staple', x: p.x, y: p.y });
 }
 
 /** Auto-releases caught balls after catchAutoRelease seconds. */
@@ -148,7 +141,7 @@ export function updateCaught(w: World, dt: number): void {
   for (const b of w.balls) {
     if (!b.stuck) continue;
     b.stuckT = (b.stuckT ?? 0) + dt;
-    if (b.stuckT >= C.catchAutoRelease) releaseBall(w, b);
+    if (b.stuckT >= C.glueAutoRelease) releaseBall(w, b);
   }
 }
 
@@ -156,7 +149,7 @@ export function updateCaught(w: World, dt: number): void {
 export function updateBolts(w: World, dt: number): void {
   const keep: typeof w.bolts = [];
   for (const bolt of w.bolts) {
-    bolt.y -= C.laserSpeed * dt;
+    bolt.y -= C.stapleSpeed * dt;
     if (bolt.y < C.topWall) continue;
     const hit = w.bricks.find(
       (k) => bolt.x >= k.x && bolt.x <= k.x + k.w && bolt.y >= k.y && bolt.y <= k.y + k.h,

@@ -91,7 +91,7 @@ describe('PlayLimiter', () => {
 
 describe('soundsForEvents', () => {
   it('maps simple events', () => {
-    expect(ids([ev('wall'), ev('paddle'), ev('launch'), ev('explode'), ev('laser'), ev('eraser')])).toEqual([
+    expect(ids([ev('wall'), ev('paddle'), ev('launch'), ev('explode'), ev('staple'), ev('eraser')])).toEqual([
       'wall', 'paddle', 'launch', 'explode', 'laser', 'eraser',
     ]);
     expect(ids([ev('lifeLost'), ev('gameover'), ev('won'), ev('regen'), ev('reveal'), ev('net')])).toEqual([
@@ -110,8 +110,8 @@ describe('soundsForEvents', () => {
     expect(ids(e)).toEqual(['break', 'shred']);
   });
   it('good and bad power-ups', () => {
-    expect(ids([ev('powerup', { power: 'expand' })])).toEqual(['powerup']);
-    for (const p of ['shrink', 'killpaddle', 'speedup', 'inkblot', 'sharpener'] as const) {
+    expect(ids([ev('powerup', { power: 'ruler' })])).toEqual(['powerup']);
+    for (const p of ['sharpener', 'scissors', 'redpen'] as const) {
       expect(ids([ev('powerup', { power: p })])).toEqual(['powerdown']);
     }
   });

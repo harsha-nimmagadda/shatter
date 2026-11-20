@@ -1,6 +1,7 @@
 import { CONFIG as C } from './config';
 import { clamp, paddleVelocity } from './balls';
-import { damageBrick, smashBrick } from './bricks';
+import { clipHit, damageBrickBall } from './bricks';
+import { paddleSegments } from './paddle';
 import type { Ball, Brick, World } from './state';
 
 export function collideWalls(w: World, b: Ball): boolean {
@@ -75,59 +76,31 @@ function deepest(b: Ball, bricks: readonly Brick[]): Brick | null {
 
 /** Ball vs bricks for one substep; returns true when the ball bounced. */
 export function collideBricks(w: World, b: Ball): boolean {
-  if (w.effects.fireball !== undefined) return collideFireball(w, b);
-  if (w.effects.through !== undefined) {
-    collideThrough(w, b);
-    return false;
-  }
-  if (b.overlap && b.overlap.length > 0) b.overlap = [];
   const k = deepest(b, w.bricks);
   if (!k) return false;
-  bounceOff(b, k);
   w.events.push({ type: 'brickHit', x: b.x, y: b.y, brickId: k.id });
-  damageBrick(w, k, w.effects.crumpled !== undefined ? 2 : 1);
-  return true;
-}
-
-/** Fireball: smashes everything but steel without bouncing; steel still bounces. */
-function collideFireball(w: World, b: Ball): boolean {
-  if (b.overlap && b.overlap.length > 0) b.overlap = [];
-  const hits = w.bricks.filter((k) => depth(b, k) > 0);
-  let steel: Brick | null = null;
-  for (const k of hits) {
-    if (k.type === 'steel') continue;
-    w.events.push({ type: 'brickHit', x: b.x, y: b.y, brickId: k.id });
-    smashBrick(w, k);
+  if (k.type === 'steel') {
+    bounceOff(b, k);
+    clipHit(w, k);
+    return true;
   }
-  steel = deepest(b, hits.filter((k) => k.type === 'steel'));
-  if (!steel) return false;
-  bounceOff(b, steel);
-  w.events.push({ type: 'brickHit', x: b.x, y: b.y, brickId: steel.id });
-  return true;
-}
-
-/** Through: passes everything, damaging each overlapped brick once per pass (steel takes none). */
-function collideThrough(w: World, b: Ball): void {
-  const prev = b.overlap ?? [];
-  const now: number[] = [];
-  for (const k of [...w.bricks]) {
-    if (depth(b, k) <= 0) continue;
-    now.push(k.id);
-    if (prev.includes(k.id)) continue;
-    w.events.push({ type: 'brickHit', x: b.x, y: b.y, brickId: k.id });
-    damageBrick(w, k, 1);
-  }
-  b.overlap = now;
+  const crumpled = w.effects.crumpled !== undefined;
+  // A crumpled wad that destroys the brick keeps going; otherwise it bounces.
+  const breaks = crumpled && !k.hidden && k.hp <= 2;
+  if (!breaks) bounceOff(b, k);
+  damageBrickBall(w, k, crumpled ? 2 : 1);
+  return !breaks;
 }
 
 export function collidePaddle(w: World, b: Ball): boolean {
   const p = w.paddle;
   if (b.vy <= 0 || b.stuck) return false;
-  const dx = b.x - clamp(b.x, p.x - p.w / 2, p.x + p.w / 2);
   const dy = b.y - clamp(b.y, p.y, p.y + p.h);
-  if (Math.hypot(dx, dy) >= b.r) return false;
+  const touching = paddleSegments(w).some(([l, r]) => Math.hypot(b.x - clamp(b.x, l, r), dy) < b.r);
+  if (!touching) return false;
   b.y = p.y - b.r;
-  if (w.effects.catch !== undefined) {
+  w.combo = 0;
+  if (w.effects.gluestick !== undefined) {
     b.stuck = true;
     b.stuckT = 0;
     b.stuckOffset = clamp(b.x - p.x, -p.w / 2, p.w / 2);

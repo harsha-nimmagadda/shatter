@@ -63,7 +63,6 @@ interface BrickInfo {
   color: string;
 }
 
-const LEVEL_TEXT = ['size -2', 'size -1', '', 'size +1', 'size +2'];
 const POP_SCALE = 0.28;
 const GHOST_KEY = 'ghost';
 const OVERLAY_IDX: Record<OverlayKind, number> = { ticks: 1, ink: 2, glue: 3, cannons: 4 };
@@ -212,9 +211,9 @@ export class Renderer {
           p.emit('tick', e.x, e.y, 8, { color: col, speed: 200, size: 11, life: 0.3 });
           p.emit('speck', e.x, e.y, 6, { color: col, speed: 150, life: 0.45 });
           if (e.power) this.fx.addFloat(powerName(e.power), e.x, e.y - 18, bad ? BAD_COLOR : col);
-          if (e.power === 'speedup') this.fx.addSpeed(1);
-          else if (e.power === 'slowdown') this.fx.addSpeed(-1);
-          else if (e.power === 'killpaddle') this.shake.add(0.35);
+          if (e.power === 'redpen') this.fx.addSpeed(1);
+          else if (e.power === 'correction') this.fx.addSpeed(-1);
+          else if (e.power === 'scissors') this.shake.add(0.35);
           break;
         }
         case 'powerMiss':
@@ -223,7 +222,7 @@ export class Renderer {
         case 'effectEnd':
           p.emit('speck', e.x, e.y, 5, { angle: -Math.PI / 2, spread: 1.4, speed: 90, color: sk.graphite, life: 0.4 });
           break;
-        case 'laser':
+        case 'staple':
           for (let k = -1; k <= 1; k += 2) {
             p.emit('tick', e.x + k * (padW / 2 - 6), e.y - 10, 2, { angle: -Math.PI / 2, spread: 0.5, speed: 140, size: 7, life: 0.15, color: sk.ink });
           }
@@ -418,9 +417,9 @@ export class Renderer {
     s.draw(ctx, 0, 0, time, 7);
     const eff = world.effects;
     if (eff.ruler !== undefined) this.overlay('ticks', rw, p.h).draw(ctx, 0, 0, time, 8);
-    if (eff.inkblot !== undefined) this.overlay('ink', rw, p.h).draw(ctx, 0, 0, time, 9);
-    if (eff.catch !== undefined) this.overlay('glue', rw, p.h).draw(ctx, 0, 0, time, 10);
-    if (eff.laser !== undefined) this.overlay('cannons', rw, p.h).draw(ctx, 0, 0, time, 11);
+        if (eff.gluestick !== undefined) this.overlay('glue', rw, p.h).draw(ctx, 0, 0, time, 10);
+    // TODO(render-revamp): scissors gap, pencil paddle, highlighter/paperclip/redpen visuals.
+    if (eff.stapler !== undefined) this.overlay('cannons', rw, p.h).draw(ctx, 0, 0, time, 11);
     ctx.restore();
     if (eff.sharpener !== undefined && dt > 0) {
       this.shaveAcc += dt * 5;
@@ -467,7 +466,7 @@ export class Renderer {
     }
     const eff = world.effects;
     const style: BallStyle | undefined =
-      eff.crumpled !== undefined ? 'crumpled' : eff.fireball !== undefined ? 'fire' : eff.through !== undefined ? 'through' : undefined;
+      (eff.crumpled !== undefined ? 'crumpled' : undefined) as BallStyle | undefined;
     const plane = eff.plane !== undefined;
     for (let i = 0; i < balls.length && i < MAX_TRAILS; i++) {
       const b = balls[i];
@@ -629,15 +628,6 @@ export class Renderer {
       ctx.stroke();
       ctx.globalAlpha = 1;
       x += 33;
-    }
-    if (world.paddleLevel !== 0) {
-      const t = LEVEL_TEXT[world.paddleLevel + 2] ?? '';
-      ctx.font = `17px ${this.skin.font}`;
-      ctx.fillStyle = world.paddleLevel > 0 ? GOOD_COLOR : BAD_COLOR;
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      ctx.fillText(t, x - 12, cy + 1);
-      x += ctx.measureText(t).width + 8;
     }
     if (world.net) {
       ctx.fillStyle = '#f9e46a';

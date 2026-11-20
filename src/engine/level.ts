@@ -51,6 +51,7 @@ export function parseLevel(level: Level, levelIndex: number): Brick[] {
         type,
         vx: type === 'moving' ? CONFIG.movingSpeed : 0,
         hidden: type === 'hidden',
+        streakHits: 0,
         seed: hash(levelIndex, r, c),
       });
     }

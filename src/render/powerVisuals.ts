@@ -4,60 +4,52 @@ import { CONFIG, EFFECT_NAMES, type EffectName, type PowerType } from '../engine
 
 /** Engine power type -> manifest icon id. null = no art, draw procedurally. */
 export const ICON_IDS: Record<PowerType, string | null> = {
-  expand: 'icon-expand',
-  shrink: null,
-  multiball: 'icon-multiball',
-  fireball: 'icon-fireball',
-  catch: 'icon-catch',
-  laser: 'icon-laser',
-  speedup: 'icon-speedup',
-  slowdown: 'icon-slowdown',
-  extralife: 'icon-extra-life',
-  killpaddle: 'icon-kill-paddle',
-  split: 'icon-split-ball',
-  through: 'icon-through-ball',
-  eraser: 'icon-eraser',
-  inkblot: 'icon-ink-blot',
-  plane: 'icon-paper-plane',
-  sharpener: 'icon-sharpener',
-  ruler: 'icon-ruler',
+  // TODO(render-revamp): real icons for the revamp power-ups; these reuse the old art.
+  photocopy: 'icon-multiball',
   crumpled: 'icon-crumpled',
+  plane: 'icon-paper-plane',
+  highlighter: null,
+  correction: 'icon-slowdown',
+  ruler: 'icon-ruler',
+  gluestick: 'icon-catch',
+  stapler: 'icon-laser',
+  eraser: 'icon-eraser',
+  goldstar: 'icon-extra-life',
+  paperclip: null,
   stickynote: 'icon-sticky-note',
+  sharpener: 'icon-sharpener',
+  scissors: 'icon-kill-paddle',
+  redpen: 'icon-speedup',
 };
 
 export type IconSource = 'art' | 'arrows' | 'doodle';
 
-/** Which drawing to use for a power: art if the id exists, inward arrows for shrink, else a lettered doodle. */
+/** Which drawing to use for a power: art if the id exists, else a lettered doodle. 'arrows' is unused now. */
 export function resolveIcon(type: string, hasArt: (id: string) => boolean): { source: IconSource; id: string | null } {
   const id = (ICON_IDS as Record<string, string | null>)[type] ?? null;
   if (id && hasArt(id)) return { source: 'art', id };
-  if (type === 'shrink') return { source: 'arrows', id: null };
   return { source: 'doodle', id: null };
 }
 
-export const BAD_POWERS: ReadonlySet<string> = new Set(['shrink', 'killpaddle', 'speedup', 'inkblot', 'sharpener']);
+export const BAD_POWERS: ReadonlySet<string> = new Set(['sharpener', 'scissors', 'redpen']);
 export const isBadPower = (type: string): boolean => BAD_POWERS.has(type);
 
 export const POWER_NAMES: Record<PowerType, string> = {
-  expand: 'Expand!',
-  shrink: 'Shrink!',
-  multiball: 'Multi-ball!',
-  fireball: 'Fireball!',
-  catch: 'Catch!',
-  laser: 'Lasers!',
-  speedup: 'Speed up!',
-  slowdown: 'Slow down',
-  extralife: 'Extra life!',
-  killpaddle: 'Ouch!',
-  split: 'Split!',
-  through: 'Ghost ball!',
-  eraser: 'Eraser!',
-  inkblot: 'Ink blot!',
-  plane: 'Paper plane!',
-  sharpener: 'Sharpened!',
-  ruler: 'Ruler!',
+  photocopy: 'Photocopy!',
   crumpled: 'Crumpled!',
+  plane: 'Paper plane!',
+  highlighter: 'Highlighter!',
+  correction: 'Correction tape',
+  ruler: 'Ruler!',
+  gluestick: 'Glue stick!',
+  stapler: 'Stapler!',
+  eraser: 'Eraser!',
+  goldstar: 'Gold star!',
+  paperclip: 'Paperclip!',
   stickynote: 'Sticky note!',
+  sharpener: 'Sharpened!',
+  scissors: 'Snip!',
+  redpen: 'Red pen!',
 };
 
 export const powerName = (type: string): string => (POWER_NAMES as Record<string, string>)[type] ?? 'Power!';

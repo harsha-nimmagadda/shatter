@@ -100,6 +100,8 @@ No sketch-style LoRA and no audio models are installed.
 
 ## Power-ups and bricks
 
+> **Superseded by [SPEC.md](SPEC.md) (v1.1 revamp, 2026-11-21).** The list below is the original v1 set.
+
 **Classic:** expand paddle, shrink paddle, multi-ball (x3), fireball (smashes through), catch/sticky,
 laser guns, speed up, slow down, extra life, kill paddle (lose a life), split ball, "through" ball.
 
@@ -123,6 +125,8 @@ Opus (me) writes briefs and reviews each milestone; Sonnet/Haiku subagents write
 | 4 | ComfyUI image pipeline + contact sheet; generate and pick world-1 assets | Sonnet writes, Haiku runs batches, you pick | All world-1 images in `assets/` |
 | 5 | All bricks and power-ups | Sonnet | Each one has a test level + unit tests |
 | 6 | Audio: ComfyUI SFX pipeline (or synth fallback), reuse TriLine SoundManager | Sonnet / Haiku runs | All game events have sounds; mute works |
+| 6.5 | Revamp to SPEC.md v1.1: 15 stationery power-ups, combo scoring, clip anti-softlock, pencil paddle, new icons/SFX | Sonnet, you pick assets | SPEC.md implemented and tested |
+| 6.6 | Autopilot simulations over all power-up/brick combos, data saved for analysis | Sonnet | CSV/JSON results to tune levels and stars |
 | 7 | 15 levels + level select, stars, saved progress | Haiku drafts levels, you playtest, Sonnet tunes | Campaign playable start to finish |
 | 8 | Menus (reused TriLine UI), polish, offline PWA, performance on a mid-range phone, deploy | Sonnet | 60 fps on your phone; live on GitHub Pages |
 

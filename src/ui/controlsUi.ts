@@ -1,6 +1,7 @@
 import { enterImmersive } from '../game/fullscreen';
 import type { Controls } from '../input/controls';
 import { saveSettings } from '../input/settings';
+import type { SoundManager } from '../audio/sound';
 
 export interface ControlsUi {
   /** True once the start overlay has been dismissed. */
@@ -26,11 +27,21 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-export function createControlsUi(root: HTMLElement, controls: Controls): ControlsUi {
+export function createControlsUi(root: HTMLElement, controls: Controls, sound?: SoundManager): ControlsUi {
   const s = controls.settings;
   let started = false;
   let settingsOpen = false;
   let pauseShown = false;
+
+  // ---- Audio: suspend while the pause overlay or a hidden tab stops the game ----
+  const syncAudio = (): void => {
+    if (!sound || !started) return;
+    if (pauseShown || document.visibilityState === 'hidden') sound.suspend();
+    else sound.resume();
+  };
+  root.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement | null)?.closest?.('button')) sound?.play('click');
+  });
 
   // ---- Hint ----
   let hintTimer = 0;
@@ -65,6 +76,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
   start.append(startBtn);
   startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
+    sound?.unlock();
     void enterImmersive();
     let hint = 'Drag anywhere to move · tap to launch';
     if (s.mode === 'tilt') {
@@ -87,11 +99,13 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
     pauseShown = false;
     pauseOv.remove();
     controls.clearFire();
+    syncAudio();
   };
   const showPause = (): void => {
     if (pauseShown || settingsOpen || !started) return;
     pauseShown = true;
     root.appendChild(pauseOv);
+    syncAudio();
   };
   resumeBtn.addEventListener('click', hidePause);
 
@@ -156,6 +170,24 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
     saveSettings(s);
   });
   shakeRow.append(shakeBox);
+  const soundRow = el('label', 'ui-row inline');
+  soundRow.append(el('span', undefined, 'Sound'));
+  const soundBox = el('input');
+  soundBox.type = 'checkbox';
+  soundBox.checked = !s.muted;
+  soundBox.addEventListener('change', () => {
+    s.muted = !soundBox.checked;
+    sound?.setMuted(s.muted);
+    saveSettings(s);
+    volume.input.disabled = s.muted;
+  });
+  soundRow.append(soundBox);
+  const volume = slider('Volume', 0, 1, 0.05, () => s.volume, (v) => {
+    s.volume = v;
+    sound?.setVolume(v);
+  });
+  volume.input.disabled = s.muted;
+  volume.input.addEventListener('change', () => sound?.play('paddle'));
   const recal = el('button', 'ui-btn', 'Recalibrate');
   const dragSens = slider('Drag sensitivity', 0.5, 3, 0.1, () => s.dragSensitivity, (v) => (s.dragSensitivity = v));
   const closeBtn = el('button', 'ui-btn', 'Close');
@@ -203,7 +235,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
     msg.textContent = 'Calibrated.';
   });
 
-  panel.append(modeRow, tiltSens.row, invertRow, recal, dragSens.row, shakeRow, msg, closeBtn);
+  panel.append(modeRow, tiltSens.row, invertRow, recal, dragSens.row, shakeRow, soundRow, volume.row, msg, closeBtn);
   panelOv.append(panel);
 
   const openSettings = (): void => {
@@ -228,6 +260,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
   window.addEventListener('blur', onLost);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') showPause();
+    syncAudio();
   });
 
   return {

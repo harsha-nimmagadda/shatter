@@ -9,6 +9,8 @@ import { NOTEBOOK_SKIN } from './render/skin';
 import { Renderer } from './render/renderer';
 import { snapshotBalls, type XY } from './render/powerVisuals';
 import { createControlsUi } from './ui/controlsUi';
+import { SoundManager } from './audio/sound';
+import { panFromX, soundsForEvents } from './audio/events';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d');
@@ -16,7 +18,8 @@ if (!ctx) throw new Error('2D canvas not supported');
 
 const view = new View(canvas);
 const controls = new Controls(canvas, view);
-const ui = createControlsUi(document.getElementById('ui') as HTMLElement, controls);
+const sound = new SoundManager({ muted: controls.settings.muted, volume: controls.settings.volume });
+const ui = createControlsUi(document.getElementById('ui') as HTMLElement, controls, sound);
 let lastFrame = performance.now();
 
 // Debug URL params: ?level=<explosive|moving|regen|hidden|mixed>, ?power=<type>, ?drop=<0..1>
@@ -77,7 +80,9 @@ function render(alpha: number): void {
 
   renderer.shake.enabled = controls.settings.shake;
   renderer.setPixelScale(view.pixelScale);
-  renderer.onEvents(drainEvents(world), world);
+  const events = drainEvents(world);
+  for (const c of soundsForEvents(events, world)) sound.play(c.id, { pan: panFromX(c.x, world.width), ...(c.volume !== undefined ? { volume: c.volume } : {}) });
+  renderer.onEvents(events, world);
   renderer.draw(c, world, prev, alpha, now / 1000);
 }
 
@@ -88,6 +93,8 @@ const fontReady: Promise<unknown> = document.fonts
   ? document.fonts.load('28px "Patrick Hand"').catch(() => undefined)
   : Promise.resolve();
 const artReady = loadWorldAssets();
+// Sounds load in parallel but never delay the start: until they arrive the synth fallback plays.
+void sound.load();
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 4000));
 // Art is swapped in whenever it finishes loading, even after the timeout (slow network or a
 // backgrounded tab can stall image decoding); until then the procedural look is shown.

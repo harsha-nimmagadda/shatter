@@ -1,4 +1,4 @@
-"""Minimal ComfyUI client: SDXL txt2img with 0-2 chained LoRAs. Stdlib only."""
+"""Minimal ComfyUI client: SDXL txt2img with 0-2 chained LoRAs, and Stable Audio Open to MP3. Stdlib only."""
 import json
 import os
 import time
@@ -10,6 +10,8 @@ import uuid
 BASE_URL = os.environ.get("COMFY_URL", "http://192.168.1.10:4567").rstrip("/")
 CHECKPOINT = "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
 TURBO = "sd_xl_turbo_1.0_fp16.safetensors"
+AUDIO_CKPT = "stable-audio-open-1.0.safetensors"
+AUDIO_CLIP = "t5_base.safetensors"
 CLIENT_ID = str(uuid.uuid4())
 
 
@@ -57,6 +59,25 @@ def build_workflow(prompt, negative, width, height, seed, steps=28, cfg=6.0, sam
     return wf
 
 
+def build_audio_workflow(prompt, negative, seconds, seed, steps=50, cfg=6.0, quality="V0", prefix="shatter-sfx"):
+    """Stable Audio Open text-to-audio, saved as MP3 inside the graph (no ffmpeg needed locally)."""
+    return {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": AUDIO_CKPT}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": AUDIO_CLIP, "type": "stable_audio"}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["2", 0]}},
+        "5": {"class_type": "ConditioningStableAudio", "inputs": {
+            "positive": ["3", 0], "negative": ["4", 0], "seconds_start": 0.0, "seconds_total": float(seconds)}},
+        "6": {"class_type": "EmptyLatentAudio", "inputs": {"seconds": float(seconds), "batch_size": 1}},
+        "7": {"class_type": "KSampler", "inputs": {
+            "model": ["1", 0], "positive": ["5", 0], "negative": ["5", 1], "latent_image": ["6", 0],
+            "seed": seed, "steps": steps, "cfg": cfg, "sampler_name": "dpmpp_3m_sde_gpu",
+            "scheduler": "exponential", "denoise": 1.0}},
+        "8": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["7", 0], "vae": ["1", 2]}},
+        "9": {"class_type": "SaveAudioMP3", "inputs": {"audio": ["8", 0], "filename_prefix": prefix, "quality": quality}},
+    }
+
+
 def queue(workflow):
     out = json.loads(_req("/prompt", {"prompt": workflow, "client_id": CLIENT_ID}))
     if out.get("node_errors"):
@@ -64,7 +85,7 @@ def queue(workflow):
     return out["prompt_id"]
 
 
-def wait(prompt_id, timeout=600, poll=1.0):
+def wait(prompt_id, timeout=600, poll=1.0, kind="images"):
     t0 = time.time()
     while time.time() - t0 < timeout:
         hist = json.loads(_req(f"/history/{prompt_id}"))
@@ -74,10 +95,10 @@ def wait(prompt_id, timeout=600, poll=1.0):
             if st.get("status_str") == "error":
                 raise ComfyError(f"generation failed: {json.dumps(st)[:500]}")
             for node in h.get("outputs", {}).values():
-                if node.get("images"):
-                    return node["images"][0]
+                if node.get(kind):
+                    return node[kind][0]
             if st.get("completed"):
-                raise ComfyError("finished without an image")
+                raise ComfyError(f"finished without {kind}")
         time.sleep(poll)
     raise ComfyError(f"timed out after {timeout}s waiting for {prompt_id}")
 
@@ -92,6 +113,18 @@ def generate(out_path, **kw):
     """Builds, queues, waits and saves one PNG to out_path."""
     pid = queue(build_workflow(**kw))
     data = download(wait(pid))
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    tmp = out_path + ".part"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, out_path)
+    return out_path
+
+
+def generate_audio(out_path, **kw):
+    """Builds, queues, waits and saves one MP3 to out_path."""
+    pid = queue(build_audio_workflow(**kw))
+    data = download(wait(pid, kind="audio"))
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     tmp = out_path + ".part"
     with open(tmp, "wb") as f:

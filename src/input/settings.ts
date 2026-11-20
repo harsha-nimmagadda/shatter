@@ -11,6 +11,10 @@ export interface ControlSettings {
   invertTilt: boolean;
   /** Screen shake effect. */
   shake: boolean;
+  /** Sound muted. */
+  muted: boolean;
+  /** Master volume 0..1. */
+  volume: number;
 }
 
 export const CONTROLS_KEY = 'shatter.controls';
@@ -18,7 +22,7 @@ export const CONTROLS_KEY = 'shatter.controls';
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function defaultSettings(touch: boolean): ControlSettings {
-  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true };
+  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true, muted: false, volume: 0.8 };
 }
 
 /** Pure: parses stored JSON, falling back to defaults per field. */
@@ -42,6 +46,8 @@ export function parseSettings(raw: string | null, touch: boolean): ControlSettin
     tiltNeutral: num(r.tiltNeutral, -180, 180, d.tiltNeutral),
     invertTilt: typeof r.invertTilt === 'boolean' ? r.invertTilt : d.invertTilt,
     shake: typeof r.shake === 'boolean' ? r.shake : d.shake,
+    muted: typeof r.muted === 'boolean' ? r.muted : d.muted,
+    volume: num(r.volume, 0, 1, d.volume),
   };
 }
 

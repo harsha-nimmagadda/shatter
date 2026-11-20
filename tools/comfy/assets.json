@@ -1,0 +1,695 @@
+{
+ "defaults": {
+  "negative": "photo, realistic, 3d render, blurry, text, watermark, signature, frame, border, multiple objects, beige, grey background, cream, shadow, paper texture, vignette",
+  "sampler": "dpmpp_2m",
+  "scheduler": "karras"
+ },
+ "assets": [
+  {
+   "id": "paper",
+   "group": "paper",
+   "prompt": "pencil sketch, blank off-white notebook paper texture, subtle paper grain and fibres, soft even lighting, flat, empty, plain, no lines, no drawings, full frame",
+   "loras": [
+    {
+     "name": "pencil_sektch.safetensors",
+     "strength": 0.6
+    }
+   ],
+   "width": 832,
+   "height": 1216,
+   "count": 4,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 2000,
+   "negative": "photo, 3d render, blurry, text, watermark, signature, frame, border, lines, ruled lines, grid, drawing, objects, stains, folds, shadows, vignette, page edge, curled edge, border, shadow"
+  },
+  {
+   "id": "fill-brick1",
+   "group": "fill",
+   "prompt": "crayon, dense warm orange-yellow amber coloured pencil hatching texture, diagonal strokes filling the whole square edge to edge, flat texture swatch, overall pattern, close-up, no outlines",
+   "loras": [
+    {
+     "name": "crayons_v1_sdxl.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 4,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 3000,
+   "negative": "blank white margins, text, watermark, signature, frame, border, objects, outlines, shapes, photo, 3d, blurry, white gaps, vignette"
+  },
+  {
+   "id": "fill-brick2",
+   "group": "fill",
+   "prompt": "crayon, dense sky blue coloured pencil hatching texture, diagonal strokes filling the whole square edge to edge, flat texture swatch, overall pattern, close-up, no outlines",
+   "loras": [
+    {
+     "name": "crayons_v1_sdxl.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 4,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 4000,
+   "negative": "blank white margins, text, watermark, signature, frame, border, objects, outlines, shapes, photo, 3d, blurry, white gaps, vignette"
+  },
+  {
+   "id": "fill-brick3",
+   "group": "fill",
+   "prompt": "crayon, dense coral red coloured pencil hatching texture, diagonal strokes filling the whole square edge to edge, flat texture swatch, overall pattern, close-up, no outlines",
+   "loras": [
+    {
+     "name": "crayons_v1_sdxl.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 4,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 5000,
+   "negative": "blank white margins, text, watermark, signature, frame, border, objects, outlines, shapes, photo, 3d, blurry, white gaps, vignette"
+  },
+  {
+   "id": "fill-steel",
+   "group": "fill",
+   "prompt": "pencil sketch, dense dark grey graphite pencil hatching texture, diagonal strokes filling the whole square edge to edge, flat texture swatch, overall pattern, close-up, no outlines",
+   "loras": [
+    {
+     "name": "pencil_sektch.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 4,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 6000,
+   "negative": "blank white margins, text, watermark, signature, frame, border, objects, outlines, shapes, photo, 3d, blurry, white gaps, vignette"
+  },
+  {
+   "id": "paddle",
+   "group": "paddle",
+   "prompt": "doodle, doodleredm, a single hand-drawn wooden ruler lying horizontally seen from the side, pencil and ink doodle, tick marks, centred, lots of white space, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1344,
+   "height": 768,
+   "count": 6,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 7000
+  },
+  {
+   "id": "ball-graphite",
+   "group": "ball",
+   "prompt": "doodle, doodleredm, a single round ball scribbled with dark graphite pencil, tight circular scribbles, hand-drawn, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 6,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 8000
+  },
+  {
+   "id": "ball-crumpled",
+   "group": "ball",
+   "prompt": "doodle, doodleredm, a single crumpled paper ball, hand-drawn pencil and ink doodle, creases, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 4,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 9000
+  },
+  {
+   "id": "title",
+   "group": "title",
+   "prompt": "doodle, doodleredm, the word SHATTER hand lettered in thick marker, big cracks running through the letters, little doodles around, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1344,
+   "height": 768,
+   "count": 6,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 10000,
+   "negative": "photo, realistic, 3d render, blurry, watermark, signature, frame, border, multiple objects, beige, grey background, cream, shadow, paper texture, vignette"
+  },
+  {
+   "id": "icon-expand",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of two big arrows pointing outward in opposite directions, expand, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 11000
+  },
+  {
+   "id": "icon-shrink",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of two big arrows pointing inward toward each other, shrink, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 12000
+  },
+  {
+   "id": "icon-multiball",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of three round balls clustered together, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 13000
+  },
+  {
+   "id": "icon-fireball",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a round ball on fire with orange flames, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 14000
+  },
+  {
+   "id": "icon-catch",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a glue bottle dripping sticky glue, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 15000
+  },
+  {
+   "id": "icon-laser",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a pencil shooting fine lines like laser beams from its tip, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 16000
+  },
+  {
+   "id": "icon-speedup",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a running shoe with a yellow lightning bolt, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 17000
+  },
+  {
+   "id": "icon-slowdown",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a cute snail, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 18000
+  },
+  {
+   "id": "icon-extra-life",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a big red heart, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 19000
+  },
+  {
+   "id": "icon-kill-paddle",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a skull, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 20000
+  },
+  {
+   "id": "icon-split-ball",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a round ball cracked in two halves, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 21000
+  },
+  {
+   "id": "icon-through-ball",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a friendly ghost shaped like a ball, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 22000
+  },
+  {
+   "id": "icon-eraser",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a pink rubber pencil eraser, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 23000
+  },
+  {
+   "id": "icon-ink-blot",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a spilled black ink blot splat, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 24000
+  },
+  {
+   "id": "icon-paper-plane",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a folded paper airplane, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 25000
+  },
+  {
+   "id": "icon-sharpener",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a pencil sharpener with a pencil, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 26000
+  },
+  {
+   "id": "icon-ruler",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a straight yellow ruler with tick marks, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 27000
+  },
+  {
+   "id": "icon-crumpled",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a crumpled paper ball, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 28000
+  },
+  {
+   "id": "icon-sticky-note",
+   "group": "icon",
+   "prompt": "doodle, doodleredm, a single icon of a yellow sticky note with a curled corner, thick black ink outline, filled with colourful marker, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.8
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 3,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 29000
+  },
+  {
+   "id": "margin-01",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a star, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 30000
+  },
+  {
+   "id": "margin-02",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a spiral, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 31000
+  },
+  {
+   "id": "margin-03",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a cube, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 32000
+  },
+  {
+   "id": "margin-04",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a flower, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 33000
+  },
+  {
+   "id": "margin-05",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a rocket, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 34000
+  },
+  {
+   "id": "margin-06",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a smiley face, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 35000
+  },
+  {
+   "id": "margin-07",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a lightning bolt, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 36000
+  },
+  {
+   "id": "margin-08",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a cloud, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 37000
+  },
+  {
+   "id": "margin-09",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a little house, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 38000
+  },
+  {
+   "id": "margin-10",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a cat face, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 39000
+  },
+  {
+   "id": "margin-11",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a music note, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 40000
+  },
+  {
+   "id": "margin-12",
+   "group": "margin",
+   "prompt": "doodle, doodleredm, a small notebook margin doodle of a crown, hand-drawn in blue ballpoint pen, centred, isolated on a pure white background, solid white #ffffff background, no shadow, simple",
+   "loras": [
+    {
+     "name": "DoodleRedmond-Doodle-DoodleRedm.safetensors",
+     "strength": 0.7
+    }
+   ],
+   "width": 1024,
+   "height": 1024,
+   "count": 1,
+   "steps": 28,
+   "cfg": 6,
+   "seed": 41000
+  }
+ ]
+}

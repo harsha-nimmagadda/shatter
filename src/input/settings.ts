@@ -9,6 +9,8 @@ export interface ControlSettings {
   /** Degrees. */
   tiltNeutral: number;
   invertTilt: boolean;
+  /** Screen shake effect. */
+  shake: boolean;
 }
 
 export const CONTROLS_KEY = 'shatter.controls';
@@ -16,7 +18,7 @@ export const CONTROLS_KEY = 'shatter.controls';
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function defaultSettings(touch: boolean): ControlSettings {
-  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false };
+  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true };
 }
 
 /** Pure: parses stored JSON, falling back to defaults per field. */
@@ -39,6 +41,7 @@ export function parseSettings(raw: string | null, touch: boolean): ControlSettin
     dragSensitivity: num(r.dragSensitivity, 0.5, 3, d.dragSensitivity),
     tiltNeutral: num(r.tiltNeutral, -180, 180, d.tiltNeutral),
     invertTilt: typeof r.invertTilt === 'boolean' ? r.invertTilt : d.invertTilt,
+    shake: typeof r.shake === 'boolean' ? r.shake : d.shake,
   };
 }
 

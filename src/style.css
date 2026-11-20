@@ -5,6 +5,7 @@ body {
   overflow: hidden;
   overscroll-behavior: none;
   background: #f6f1e3;
+  font-family: 'Patrick Hand', 'Comic Sans MS', cursive;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -24,23 +25,53 @@ body {
   pointer-events: none;
 }
 
-/* ---- Controls UI (milestone 3 restyles) ---- */
+/* ---- Notebook UI ---- */
+:root {
+  --paper: #fbf6e6;
+  --paper-2: #f3ecd6;
+  --ink: #2b2b2b;
+  --blue: #3a63a8;
+  --red: #c4504a;
+  --font: 'Patrick Hand', 'Comic Sans MS', 'Segoe Print', cursive;
+  --wob-a: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  --wob-b: 15px 225px 15px 255px / 255px 15px 225px 15px;
+  --wob-c: 225px 20px 255px 12px / 14px 255px 18px 225px;
+}
+
 .ui-btn {
   pointer-events: auto;
   min-width: 44px;
   min-height: 44px;
-  padding: 8px 16px;
-  font: 600 18px/1.2 sans-serif;
-  color: #2b2b2b;
-  background: #fffdf6;
-  border: 2px solid #2b2b2b;
-  border-radius: 10px;
+  padding: 6px 18px;
+  font: 400 22px/1.1 var(--font);
+  color: var(--ink);
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  border-radius: var(--wob-a);
+  box-shadow: 2px 3px 0 rgba(43, 43, 43, 0.35);
   cursor: pointer;
   touch-action: manipulation;
+  transform: rotate(-0.8deg);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+.ui-btn:nth-child(even) {
+  border-radius: var(--wob-b);
+  transform: rotate(0.9deg);
+}
+.ui-btn:active {
+  transform: translate(2px, 2px) rotate(0deg);
+  box-shadow: 0 1px 0 rgba(43, 43, 43, 0.35);
+}
+.ui-btn:focus-visible {
+  outline: 3px dashed var(--blue);
+  outline-offset: 3px;
 }
 .ui-btn.big {
-  font-size: 28px;
-  padding: 16px 36px;
+  font-size: 34px;
+  padding: 14px 40px;
+}
+.ui-btn:disabled {
+  opacity: 0.6;
 }
 .ui-gear {
   position: absolute;
@@ -49,8 +80,17 @@ body {
   width: 44px;
   height: 44px;
   padding: 0;
-  font-size: 24px;
-  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wob-c);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  opacity: 0.85;
+}
+.ui-gear svg {
+  display: block;
 }
 .ui-overlay {
   position: absolute;
@@ -62,36 +102,47 @@ body {
   gap: 24px;
   padding: calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px)
     calc(env(safe-area-inset-bottom) + 16px) calc(env(safe-area-inset-left) + 16px);
-  background: rgba(246, 241, 227, 0.92);
+  background: rgba(251, 246, 230, 0.93);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, rgba(90, 140, 210, 0.3) 31px 32px);
   pointer-events: auto;
-  font-family: sans-serif;
-  color: #2b2b2b;
+  font-family: var(--font);
+  color: var(--ink);
   text-align: center;
 }
 .ui-overlay h1 {
   margin: 0;
-  font-size: 64px;
+  font: 400 clamp(64px, 20vw, 110px) / 1 var(--font);
+  transform: rotate(-3deg);
+  text-decoration: underline wavy var(--red) 3px;
+  text-underline-offset: 10px;
 }
 .ui-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  width: min(360px, 100%);
-  padding: 20px;
-  background: #fffdf6;
-  border: 2px solid #2b2b2b;
-  border-radius: 12px;
+  gap: 14px;
+  width: min(380px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px 22px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: var(--wob-c);
+  box-shadow: 4px 5px 0 rgba(43, 43, 43, 0.3);
+  transform: rotate(-0.6deg);
   text-align: left;
-  font-size: 18px;
+  font-size: 22px;
 }
 .ui-panel h2 {
   margin: 0;
-  font-size: 24px;
+  font: 400 34px/1 var(--font);
+  text-decoration: underline wavy var(--red) 2px;
+  text-underline-offset: 6px;
 }
 .ui-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .ui-row.inline {
   flex-direction: row;
@@ -99,29 +150,21 @@ body {
   justify-content: space-between;
   min-height: 44px;
 }
-.ui-row input[type='range'] {
-  width: 100%;
-  min-height: 44px;
-}
-.ui-row input[type='checkbox'] {
-  width: 28px;
-  height: 28px;
-}
 .ui-seg {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 .ui-seg .ui-btn {
   flex: 1;
 }
 .ui-seg .ui-btn.on {
-  background: #2b2b2b;
-  color: #fffdf6;
+  background: var(--ink);
+  color: var(--paper);
 }
 .ui-msg {
   min-height: 1.3em;
-  font-size: 16px;
-  color: #8a3a3a;
+  font-size: 18px;
+  color: var(--red);
 }
 .ui-hint {
   position: absolute;
@@ -130,9 +173,81 @@ body {
   top: 40%;
   padding: 0 24px;
   text-align: center;
-  font: 600 clamp(16px, 5vw, 22px) sans-serif;
-  color: #2b2b2b;
-  text-shadow: 0 0 6px #fffdf6, 0 0 6px #fffdf6;
+  font: 400 clamp(22px, 6vw, 30px) var(--font);
+  color: var(--ink);
+  text-shadow: 0 0 6px var(--paper), 0 0 6px var(--paper), 0 0 10px var(--paper);
   pointer-events: none;
   transition: opacity 0.4s;
+}
+
+/* Range sliders: a pencil line with a scribbled blob thumb. */
+.ui-row input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.ui-row input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--ink);
+  border-radius: 255px 4px 225px 4px / 4px 225px 4px 255px;
+}
+.ui-row input[type='range']::-moz-range-track {
+  height: 4px;
+  background: var(--ink);
+  border-radius: 255px 4px 225px 4px / 4px 225px 4px 255px;
+}
+.ui-row input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -12px;
+  background: #f0b04e;
+  border: 2.5px solid var(--ink);
+  border-radius: 55% 45% 50% 50% / 50% 55% 45% 50%;
+}
+.ui-row input[type='range']::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  background: #f0b04e;
+  border: 2.5px solid var(--ink);
+  border-radius: 55% 45% 50% 50% / 50% 55% 45% 50%;
+}
+.ui-row input[type='range']:focus-visible {
+  outline: 3px dashed var(--blue);
+  outline-offset: 2px;
+}
+
+/* Checkbox: a hand-drawn square with an ink tick. */
+.ui-row input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  border-radius: 6px 3px 7px 3px / 3px 7px 3px 6px;
+  cursor: pointer;
+}
+.ui-row input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  width: 8px;
+  height: 18px;
+  border: solid var(--blue);
+  border-width: 0 4px 4px 0;
+  border-radius: 2px;
+  transform: rotate(40deg);
+}
+.ui-row input[type='checkbox']:focus-visible {
+  outline: 3px dashed var(--blue);
+  outline-offset: 3px;
 }

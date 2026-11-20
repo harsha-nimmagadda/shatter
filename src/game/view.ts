@@ -44,6 +44,11 @@ export class View {
     this.fit = fitPlayfield(this.cssW, this.cssH);
   }
 
+  /** Device pixels per logical unit (dpr * fit scale). */
+  get pixelScale(): number {
+    return this.dpr * this.fit.scale;
+  }
+
   /** Clears the whole canvas to the margin colour and sets the logical-coordinate transform. */
   begin(ctx: CanvasRenderingContext2D): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0);

@@ -130,5 +130,8 @@ describe('settings', () => {
     expect(s.tiltSensitivity).toBe(10);
     expect(s.dragSensitivity).toBe(1.5);
     expect(s.invertTilt).toBe(true);
+    expect(s.shake).toBe(true);
+    expect(parseSettings('{"shake":false}', true).shake).toBe(false);
+    expect(parseSettings('{"shake":"no"}', true).shake).toBe(true);
   });
 });

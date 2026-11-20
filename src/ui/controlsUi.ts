@@ -77,7 +77,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
   // ---- Pause overlay ----
   const pauseOv = el('div', 'ui-overlay');
   pauseOv.append(el('h1', undefined, 'Paused'));
-  const resumeBtn = el('button', 'ui-btn big', 'Paused — tap to resume');
+  const resumeBtn = el('button', 'ui-btn big', 'Tap to resume');
   pauseOv.append(resumeBtn);
   const hidePause = (): void => {
     if (!pauseShown) return;
@@ -93,7 +93,12 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
   resumeBtn.addEventListener('click', hidePause);
 
   // ---- Settings panel ----
-  const gear = el('button', 'ui-btn ui-gear', '⚙');
+  const gear = el('button', 'ui-btn ui-gear');
+  gear.innerHTML =
+    '<svg viewBox="0 0 32 32" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M24.5 15.2c.4 5-3.6 9.3-8.6 9.3s-8.9-4.3-8.2-9.2c.7-4.6 4.5-8 8.8-7.7 4.2.3 7.6 3.6 8 7.6z"/>' +
+    '<path d="M26.0 16.0L30.0 16.4M23.1 23.1L25.6 26.2M16.0 26.0L15.6 30.0M8.9 23.1L5.8 25.6M6.0 16.0L2.0 15.6M8.9 8.9L6.4 5.8M16.0 6.0L16.4 2.0M23.1 8.9L26.2 6.4"/>' +
+    '<path d="M18.6 15.6c.2 1.7-1.2 3-2.8 2.9-1.6-.2-2.7-1.6-2.4-3.1.3-1.5 1.6-2.4 3-2.2 1.2.2 2.1 1.2 2.2 2.4z"/></svg>';
   gear.setAttribute('aria-label', 'Settings');
   root.appendChild(gear);
 
@@ -138,6 +143,16 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
     saveSettings(s);
   });
   invertRow.append(invert);
+  const shakeRow = el('label', 'ui-row inline');
+  shakeRow.append(el('span', undefined, 'Screen shake'));
+  const shakeBox = el('input');
+  shakeBox.type = 'checkbox';
+  shakeBox.checked = s.shake;
+  shakeBox.addEventListener('change', () => {
+    s.shake = shakeBox.checked;
+    saveSettings(s);
+  });
+  shakeRow.append(shakeBox);
   const recal = el('button', 'ui-btn', 'Recalibrate');
   const dragSens = slider('Drag sensitivity', 0.5, 3, 0.1, () => s.dragSensitivity, (v) => (s.dragSensitivity = v));
   const closeBtn = el('button', 'ui-btn', 'Close');
@@ -185,7 +200,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls): Control
     msg.textContent = 'Calibrated.';
   });
 
-  panel.append(modeRow, tiltSens.row, invertRow, recal, dragSens.row, msg, closeBtn);
+  panel.append(modeRow, tiltSens.row, invertRow, recal, dragSens.row, shakeRow, msg, closeBtn);
   panelOv.append(panel);
 
   const openSettings = (): void => {

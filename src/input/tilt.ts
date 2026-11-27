@@ -1,3 +1,5 @@
+import { AdaptiveTilt } from './adaptive';
+import { OneEuro, RestGate, steadinessParams } from './filter';
 import {
   axisToPaddleX,
   defaultCalibration,
@@ -42,6 +44,8 @@ const isApple = (): boolean =>
 export class TiltInput {
   /** Called when the screen rotates while a saved calibration exists (the saved axis may no longer fit). */
   onOrientationChange: (() => void) | null = null;
+  /** Adaptive mode needs a quick start (first use, or the screen rotated): the UI should run the swing overlay. */
+  onQuickStartNeeded: (() => void) | null = null;
 
   private g: Vec3 | null = null;
   private gAt = 0;
@@ -50,7 +54,16 @@ export class TiltInput {
   private orientUp: Vec3 | null = null;
   /** +1 when devicemotion uses the Android convention (flat face-up = +z), -1 when inverted (older iOS). */
   private sign = isApple() ? -1 : 1;
-  private smoothed: number | null = null;
+  /** Latest unfiltered unit gravity vector (steering filters the angle instead, see filter.ts). */
+  private raw: Vec3 | null = null;
+  /** Lightly (30 ms) smoothed gravity for the wizard and quick start, which look at peaks. */
+  private gq: Vec3 | null = null;
+  private readonly eur = new OneEuro(steadinessParams(1));
+  private readonly gate = new RestGate();
+  private adaptive: AdaptiveTilt | null = null;
+  private adaptiveStale = false;
+  private quickAsked = false;
+  private inPlay = false;
   private listening = false;
   /** Automatic calibration (no saved one): neutral captured at serve start. */
   private auto: TiltCalibration | null = null;
@@ -88,7 +101,8 @@ export class TiltInput {
     // Let the rotation animation and the sensor settle first.
     this.orientTimer = window.setTimeout(() => {
       if (!this.listening) return;
-      if (this.settings.tiltCal) this.onOrientationChange?.();
+      if (this.settings.tiltMode === 'adaptive') this.adaptiveStale = true; // re-run the quick start at the next serve
+      else if (this.settings.tiltMode === 'calibrated') this.onOrientationChange?.();
       else this.armNeutral();
     }, 450);
   };
@@ -102,12 +116,19 @@ export class TiltInput {
   private feed(u: Vec3, now: number): void {
     const dt = this.g ? Math.min(0.1, (now - this.gAt) / 1000) : 0;
     this.g = lowPassVec(this.g, u, dt);
+    this.gq = lowPassVec(this.gq, u, dt, 0.03);
+    this.raw = u;
     this.gAt = now;
   }
 
   /** Latest low-passed unit gravity vector in device coordinates, or null before the first reading. */
   gravity(): Vec3 | null {
     return this.g ? normalize(this.g) : null;
+  }
+
+  /** Light-weight gravity (30 ms low-pass) for peak detection; null before the first reading. */
+  gravityFast(): Vec3 | null {
+    return this.gq ? normalize(this.gq) : null;
   }
 
   /**
@@ -142,7 +163,9 @@ export class TiltInput {
       this.listening = true;
     }
     this.g = null;
-    this.smoothed = null;
+    this.gq = null;
+    this.raw = null;
+    this.resetFilter();
     this.auto = null;
     this.armed = true;
     const ok = await new Promise<boolean>((resolve) => {
@@ -161,22 +184,62 @@ export class TiltInput {
     return 'granted';
   }
 
-  /** Re-capture the automatic neutral on the next reading (level start, screen rotation). No-op with a saved calibration. */
-  armNeutral(): void {
-    this.armed = true;
-    this.smoothed = null;
+  private resetFilter(): void {
+    this.eur.reset();
+    this.gate.reset();
   }
 
-  /** Stores (or clears, with null) the saved 3-point calibration. */
+  /** Re-capture the automatic neutral on the next reading (level start, screen rotation). No-op in other modes. */
+  armNeutral(): void {
+    this.armed = true;
+    this.resetFilter();
+  }
+
+  /** Stores (or clears, with null) the saved 3-point calibration; a calibration switches to calibrated mode. */
   setCalibration(cal: TiltCalibration | null): void {
     this.settings.tiltCal = cal;
-    this.smoothed = null;
+    if (cal) this.settings.tiltMode = 'calibrated';
+    else if (this.settings.tiltMode === 'calibrated') this.settings.tiltMode = 'auto';
+    this.resetFilter();
     saveSettings(this.settings);
+  }
+
+  /** The ball is in play: the adaptive mode only learns during play. */
+  setInPlay(on: boolean): void {
+    this.inPlay = on;
+  }
+
+  /** Adaptive mode has no usable calibration yet (never started this session, or the screen rotated). */
+  needsQuickStart(): boolean {
+    return this.settings.tiltMode === 'adaptive' && (this.adaptive === null || this.adaptiveStale);
+  }
+
+  /** Call every step with whether the game is at a serve: asks the UI for the quick start once when it is needed. */
+  pollServe(atServe: boolean): void {
+    if (!atServe || !this.listening || !this.raw || this.quickAsked || !this.needsQuickStart()) return;
+    this.quickAsked = true;
+    this.onQuickStartNeeded?.();
+  }
+
+  /** Result of the quick start: the learned calibration, or null to fall back to the screen axes (still adapting). */
+  startAdaptive(cal: TiltCalibration | null): void {
+    this.quickAsked = false;
+    this.adaptiveStale = false;
+    const base = cal ?? (this.gravity() ? defaultCalibration(this.gravity() as Vec3, currentScreenAngle()) : null);
+    this.adaptive = base ? new AdaptiveTilt(base) : null;
+    this.resetFilter();
+  }
+
+  /** Forget the adaptive state (mode switched away, or tilt disabled). */
+  clearAdaptive(): void {
+    this.adaptive = null;
+    this.adaptiveStale = false;
+    this.quickAsked = false;
   }
 
   /** The calibration in use right now (saved, else automatic), or null before the first reading. */
   private current(): TiltCalibration | null {
-    if (this.settings.tiltCal) return this.settings.tiltCal;
+    if (this.settings.tiltMode === 'calibrated' && this.settings.tiltCal) return this.settings.tiltCal;
     const g = this.gravity();
     if (!g) return null;
     if (this.armed || !this.auto) {
@@ -186,16 +249,30 @@ export class TiltInput {
     return this.auto;
   }
 
-  /** Smoothed paddle target, or null if no reading has arrived yet. */
+  /** Filtered paddle target, or null if no reading (or, in adaptive mode, no quick start) has arrived yet. */
   paddleX(dt: number, settings: ControlSettings, playfieldW: number, paddleW: number): number | null {
-    const g = this.gravity();
-    const cal = this.current();
-    if (!g || !cal) return null;
-    this.lastAngle = tiltAngle(g, cal);
-    const axis = tiltAxis(this.lastAngle, cal, rangeScale(settings.tiltSensitivity), settings.invertTilt);
-    const target = axisToPaddleX(axis, playfieldW, paddleW);
-    this.smoothed = this.smoothed === null ? target : smooth(this.smoothed, target, dt, 0.035);
-    return this.smoothed;
+    const raw = this.raw;
+    if (!raw) return null;
+    let cal: TiltCalibration | null;
+    let angle: number;
+    if (settings.tiltMode === 'adaptive') {
+      if (!this.adaptive) return null;
+      angle = this.adaptive.update(raw, dt, this.inPlay);
+      cal = this.adaptive.cal;
+    } else {
+      cal = this.current();
+      if (!cal) return null;
+      angle = tiltAngle(raw, cal);
+    }
+    this.eur.params = steadinessParams(settings.tiltSteadiness);
+    this.lastAngle = this.eur.filter(angle, Math.min(dt, 0.05));
+    const axis = tiltAxis(this.gate.apply(this.lastAngle), cal, rangeScale(settings.tiltSensitivity), settings.invertTilt);
+    return axisToPaddleX(axis, playfieldW, paddleW);
+  }
+
+  /** The adaptive calibration as learned so far (debug / UI), or null. */
+  adaptiveCal(): TiltCalibration | null {
+    return this.adaptive ? { ...this.adaptive.cal } : null;
   }
 
   /** Last steering angle in degrees (debug / UI). */
@@ -211,8 +288,11 @@ export class TiltInput {
     window.clearTimeout(this.orientTimer);
     this.listening = false;
     this.g = null;
-    this.smoothed = null;
+    this.gq = null;
+    this.raw = null;
+    this.resetFilter();
     this.auto = null;
     this.armed = true;
+    this.clearAdaptive();
   }
 }

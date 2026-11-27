@@ -1,5 +1,8 @@
 import { readStore, writeStore } from '../ui/storage';
+import { DEFAULT_STEADINESS } from './filter';
 import { parseCalibration, type TiltCalibration } from './gravity';
+
+export type TiltMode = 'auto' | 'calibrated' | 'adaptive';
 
 export interface ControlSettings {
   mode: 'tilt' | 'drag' | 'stick';
@@ -11,6 +14,10 @@ export interface ControlSettings {
   stickSpeed: number;
   /** 3-point tilt calibration (gravity vectors); null = automatic from the screen orientation. */
   tiltCal: TiltCalibration | null;
+  /** Tilt steering: automatic (screen axes), saved 3-step calibration, or adaptive (learns from play, experimental). */
+  tiltMode: TiltMode;
+  /** Tilt smoothing 0 Low / 1 Medium / 2 High (One Euro filter presets, see filter.ts). */
+  tiltSteadiness: number;
   invertTilt: boolean;
   /** Screen shake effect. */
   shake: boolean;
@@ -39,7 +46,7 @@ export const CONTROLS_KEY = 'shatter.controls';
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function defaultSettings(touch: boolean, osReduceMotion = false): ControlSettings {
-  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, stickSpeed: 1, tiltCal: null, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, reduceMotion: osReduceMotion, tips: true, haptics: true, graphics: 'auto' };
+  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, stickSpeed: 1, tiltCal: null, tiltMode: 'auto', tiltSteadiness: DEFAULT_STEADINESS, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, reduceMotion: osReduceMotion, tips: true, haptics: true, graphics: 'auto' };
 }
 
 /** Pure: parses stored JSON, falling back to defaults per field. */
@@ -56,12 +63,18 @@ export function parseSettings(raw: string | null, touch: boolean, osReduceMotion
   const r = o as Record<string, unknown>;
   const num = (v: unknown, lo: number, hi: number, def: number): number =>
     typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : def;
+  const tiltCal = parseCalibration(r.tiltCal);
+  // Older saves have no tiltMode: a saved calibration meant calibrated, otherwise automatic.
+  let tiltMode: TiltMode = r.tiltMode === 'auto' || r.tiltMode === 'calibrated' || r.tiltMode === 'adaptive' ? r.tiltMode : tiltCal ? 'calibrated' : 'auto';
+  if (tiltMode === 'calibrated' && !tiltCal) tiltMode = 'auto';
   return {
     mode: r.mode === 'tilt' || r.mode === 'drag' || r.mode === 'stick' ? r.mode : d.mode,
     tiltSensitivity: num(r.tiltSensitivity, 1, 10, d.tiltSensitivity),
     dragSensitivity: num(r.dragSensitivity, 0.5, 3, d.dragSensitivity),
     stickSpeed: num(r.stickSpeed, 0.6, 1.6, d.stickSpeed),
-    tiltCal: parseCalibration(r.tiltCal),
+    tiltCal,
+    tiltMode,
+    tiltSteadiness: Math.round(num(r.tiltSteadiness, 0, 2, d.tiltSteadiness)),
     invertTilt: typeof r.invertTilt === 'boolean' ? r.invertTilt : d.invertTilt,
     shake: typeof r.shake === 'boolean' ? r.shake : d.shake,
     muted: typeof r.muted === 'boolean' ? r.muted : d.muted,

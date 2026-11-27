@@ -1865,3 +1865,74 @@ html[data-motion='off'] .ui-tile:active {
   pointer-events: auto;
   cursor: pointer;
 }
+
+/* ---- Adaptive tilt: swing overlay and steadiness ---- */
+.swing-cue {
+  min-height: 1.2em;
+  font: 800 clamp(30px, 9vw, 44px) / 1.1 var(--font);
+  letter-spacing: 0.06em;
+  color: var(--cyan);
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.7);
+}
+.swing-cue[data-cue='right'] {
+  color: var(--pink);
+  text-shadow: 0 0 14px rgba(255, 60, 172, 0.7);
+}
+.swing-cue[data-cue='getready'],
+.swing-cue[data-cue='tryagain'] {
+  color: rgba(244, 247, 255, 0.75);
+  text-shadow: none;
+}
+.swing-meter {
+  width: min(260px, 70%);
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(157, 107, 255, 0.25);
+  overflow: hidden;
+}
+.swing-meter i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--cyan), var(--pink));
+  transition: width 0.12s linear;
+}
+.s-swing .wiz-phone {
+  animation: wiz-swing 1.9s ease-in-out infinite;
+}
+@keyframes wiz-swing {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-22deg);
+  }
+  75% {
+    transform: rotate(22deg);
+  }
+}
+.ui-seg .ui-btn small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  text-transform: uppercase;
+}
+.ui-tiltbox .ui-tiltmodes {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.ui-settings .ui-tiltbox .ui-tiltmodes .ui-btn {
+  padding: 8px 2px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .s-swing .wiz-phone,
+  .swing-meter i {
+    animation: none;
+    transition: none;
+  }
+}

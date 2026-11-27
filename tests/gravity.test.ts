@@ -337,7 +337,46 @@ describe('Calibrator (wizard state machine)', () => {
     let t = hold(c, g0, 0, 700);
     t = hold(c, held(0, 50, -3), t, 1500); // barely tilted: not a capture
     expect(c.step).toBe('left');
-    expect(c.progress).toBe(0);
+    expect(c.progress).toBeLessThan(0.5); // approaching, but not a capture
+  });
+
+  it('left and right are captured as peaks of a swing: no holding still needed', () => {
+    const c = new Calibrator();
+    c.arm(0);
+    let t = hold(c, g0, 0, 500);
+    expect(c.step).toBe('left');
+    t = sweep(c, g0, gL, t); // swing out...
+    expect(c.step).toBe('left'); // ...nothing yet: still on its way out
+    t = sweep(c, gL, g0, t); // ...and back
+    expect(c.step).toBe('right');
+    expect(angleBetween(c.gL!, gL)).toBeLessThan(2); // the extreme, not wherever the swing turned back
+    t = sweep(c, g0, gR, t);
+    t = sweep(c, gR, g0, t);
+    expect(c.step).toBe('done');
+    const cal = c.result!;
+    expect(tiltAngle(gL, cal)).toBeLessThan(-0.85 * cal.left);
+    expect(tiltAngle(gR, cal)).toBeGreaterThan(0.85 * cal.right);
+    expect(t).toBeGreaterThan(0);
+  });
+
+  it('neutral tolerates a small wobble (+-1.8 degrees) and needs only 0.4 s', () => {
+    const c = new Calibrator();
+    c.arm(0);
+    hold(c, g0, 0, 600, 1.8);
+    expect(c.step).toBe('left');
+  });
+
+  it('a swing that does not go far enough is not captured and gets a nudge after a while', () => {
+    const c = new Calibrator();
+    c.arm(0);
+    let t = hold(c, g0, 0, 500);
+    for (let i = 0; i < 4; i++) {
+      t = sweep(c, g0, held(0, 50, -4), t);
+      t = sweep(c, held(0, 50, -4), g0, t);
+    }
+    t = hold(c, g0, t, 3000);
+    expect(c.step).toBe('left');
+    expect(c.message).toMatch(/swing out/i);
   });
 
   it('the right capture cannot be the same pose as left ("now tilt the other way")', () => {
@@ -352,7 +391,7 @@ describe('Calibrator (wizard state machine)', () => {
     expect(c.message).toMatch(/other way/i);
   });
 
-  it('left and right on the same side restarts from neutral with a friendly message', () => {
+  it('a right tilt on the left side is not accepted (now tilt the other way)', () => {
     const c = new Calibrator();
     c.arm(0);
     let t = hold(c, g0, 0, 700);
@@ -360,9 +399,8 @@ describe('Calibrator (wizard state machine)', () => {
     t = hold(c, held(0, 50, -20), t, 700);
     t = sweep(c, held(0, 50, -20), held(0, 50, -50), t);
     t = hold(c, held(0, 50, -50), t, 700);
-    expect(c.step).toBe('neutral');
-    expect(c.armed).toBe(false);
-    expect(c.message).toMatch(/middle/i);
+    expect(c.step).toBe('right'); // the other side is still asked for
+    expect(c.message).toMatch(/other way/i);
     expect(c.result).toBeNull();
     expect(t).toBeGreaterThan(0);
   });

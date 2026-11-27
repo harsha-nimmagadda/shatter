@@ -7,6 +7,8 @@ import type { HudLayout } from '../game/hud';
 import type { Nav } from './nav';
 import { enter, leave } from './motion';
 import { runTiltWizard } from './tiltWizard';
+import { runSwingOverlay } from './swingOverlay';
+import { STEADINESS_LABELS } from '../input/filter';
 import type { Installer } from '../game/install';
 import { versionString } from '../game/version';
 import { CATEGORY_COLORS } from '../render/powerVisuals';
@@ -250,6 +252,23 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     return r === 'saved';
   };
 
+  // ---- Adaptive tilt quick start ("swing your phone left and right"; modal) ----
+  const openQuickStart = async (skipLabel = 'SKIP'): Promise<boolean> => {
+    wizardOpen = true;
+    const r = await runSwingOverlay(root, nav, controls.tilt, skipLabel);
+    wizardOpen = false;
+    controls.clearFire();
+    controls.tilt.armNeutral();
+    return r === 'saved';
+  };
+  // Adaptive mode asks for it at the first serve (and again after a screen rotation); skipping falls back to the
+  // screen axes, which the adaptive mode then refines while you play.
+  controls.tilt.onQuickStartNeeded = () => {
+    void openQuickStart('SKIP').then((ok) => {
+      if (!ok) controls.tilt.startAdaptive(null);
+    });
+  };
+
   // ---- Fullscreen controls (all hidden where the API does not exist, e.g. iPhone Safari) ----
   const fsOK = isFullscreenSupported();
   const fsItems: { btn: HTMLElement; kind: 'label' | 'icon' | 'tile' }[] = [];
@@ -488,17 +507,39 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
 
   // Controls tab
   const tiltBox = el('div', 'ui-row ui-tiltbox');
+  const tiltModeSeg = el('div', 'ui-seg ui-tiltmodes');
+  const TILT_MODES: { id: ControlSettings['tiltMode']; label: string; note?: string }[] = [
+    { id: 'auto', label: 'AUTO' },
+    { id: 'calibrated', label: 'CALIBRATED' },
+    { id: 'adaptive', label: 'ADAPTIVE', note: 'experimental' },
+  ];
+  const tiltModeBtns = TILT_MODES.map((m) => {
+    const b = el('button', 'ui-btn', m.label);
+    if (m.note) b.append(el('small', undefined, m.note));
+    b.dataset.tiltMode = m.id;
+    tiltModeSeg.append(b);
+    return b;
+  });
   const tiltStatus = el('span', 'ui-tiltstatus');
   const calRow = el('div', 'ui-seg');
-  const calBtn = el('button', 'ui-btn', 'CALIBRATE TILT');
-  const autoBtn = el('button', 'ui-btn', 'USE AUTO');
-  calRow.append(calBtn, autoBtn);
-  tiltBox.append(tiltStatus, calRow);
+  const calBtn = el('button', 'ui-btn', 'RECALIBRATE');
+  const quickBtn = el('button', 'ui-btn', 'RE-RUN QUICK START');
+  calRow.append(calBtn, quickBtn);
+  tiltBox.append(el('span', undefined, 'Tilt style'), tiltModeSeg, tiltStatus, calRow);
   const tiltSens = slider('Tilt sensitivity', 1, 10, 0.5, () => s.tiltSensitivity, (v) => (s.tiltSensitivity = v));
+  const steady = slider('Steadiness', 0, 2, 1, () => s.tiltSteadiness, (v) => (s.tiltSteadiness = Math.round(v)));
+  const steadyLabel = steady.row.firstElementChild as HTMLElement;
+  const showSteady = (): void => {
+    const name = STEADINESS_LABELS[s.tiltSteadiness] ?? 'Medium';
+    steadyLabel.textContent = `Steadiness · ${name}`;
+    steady.input.setAttribute('aria-valuetext', name);
+  };
+  showSteady();
+  steady.input.addEventListener('input', showSteady);
   const invertRow = toggle('Invert tilt', () => s.invertTilt, (v) => (s.invertTilt = v));
   const dragSens = slider('Drag sensitivity', 0.5, 3, 0.1, () => s.dragSensitivity, (v) => (s.dragSensitivity = v));
   const stickSpeed = slider('Stick speed', 0.6, 1.6, 0.05, () => s.stickSpeed, (v) => (s.stickSpeed = v));
-  panes[0].append(modeRow, tiltBox, tiltSens.row, invertRow, dragSens.row, stickSpeed.row, msg);
+  panes[0].append(modeRow, tiltBox, tiltSens.row, steady.row, invertRow, dragSens.row, stickSpeed.row, msg);
 
   // Sound tab
   const soundRow = el('label', 'ui-row inline');
@@ -636,12 +677,21 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     dragBtn.classList.toggle('on', s.mode === 'drag');
     stickBtn.classList.toggle('on', s.mode === 'stick');
     const tilt = s.mode === 'tilt';
-    for (const r of [tiltBox, tiltSens.row, invertRow]) r.style.display = tilt ? '' : 'none';
+    for (const r of [tiltBox, tiltSens.row, steady.row, invertRow]) r.style.display = tilt ? '' : 'none';
     dragSens.row.style.display = s.mode === 'drag' ? '' : 'none';
     stickSpeed.row.style.display = s.mode === 'stick' ? '' : 'none';
     const c = s.tiltCal;
-    tiltStatus.textContent = c ? `Calibrated · left ${Math.round(c.left)}° · right ${Math.round(c.right)}°` : 'Automatic · follows your screen orientation';
-    autoBtn.hidden = !c;
+    tiltModeBtns.forEach((b) => b.classList.toggle('on', b.dataset.tiltMode === s.tiltMode));
+    tiltStatus.textContent =
+      s.tiltMode === 'calibrated' && c
+        ? `Calibrated · left ${Math.round(c.left)}° · right ${Math.round(c.right)}°`
+        : s.tiltMode === 'adaptive'
+          ? 'Adaptive · experimental · learns how you hold the phone and keeps adjusting while you play'
+          : 'Automatic · follows your screen orientation';
+    calBtn.hidden = s.tiltMode !== 'calibrated';
+    quickBtn.hidden = s.tiltMode !== 'adaptive';
+    steady.input.value = String(s.tiltSteadiness);
+    showSteady();
     updateFade();
   };
 
@@ -662,7 +712,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     const r = await controls.tilt.enable();
     if (r === 'granted') {
       s.mode = 'tilt';
-      say(s.tiltCal ? '' : 'Tip: calibrate tilt for the best feel.', true);
+      say(s.tiltMode === 'auto' ? 'Tip: Calibrated or Adaptive tilt can feel better.' : '', true);
     } else {
       s.mode = 'drag';
       say('Tilt not available here, using drag.');
@@ -670,27 +720,76 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     saveSettings(s);
     refresh();
   });
-  calBtn.addEventListener('click', async () => {
-    // Permission requests must start inside this tap; skip when tilt is already running.
-    if (!controls.tilt.active) {
-      const r = await controls.tilt.enable();
-      if (r !== 'granted') {
-        say(r === 'denied' ? 'Motion access was denied. Allow it in your browser settings.' : 'Tilt not available here.');
-        updateFade();
-        return;
-      }
-    }
+  // Permission requests must start inside the tap; skipped when tilt is already running.
+  const ensureTilt = async (): Promise<boolean> => {
+    if (controls.tilt.active) return true;
+    const r = await controls.tilt.enable();
+    if (r === 'granted') return true;
+    say(r === 'denied' ? 'Motion access was denied. Allow it in your browser settings.' : 'Tilt not available here.');
+    updateFade();
+    return false;
+  };
+  const runCalibration = async (): Promise<void> => {
     say('');
     const saved = await openWizard('CANCEL');
     say(saved ? 'Tilt calibrated.' : '', true);
     refresh();
+  };
+  const runQuick = async (previous: ControlSettings['tiltMode']): Promise<void> => {
+    say('');
+    const ok = await openQuickStart('CANCEL');
+    if (ok) say('Adaptive tilt is ready. It keeps learning while you play.', true);
+    else {
+      // Cancelled: go back to where we were.
+      s.tiltMode = previous;
+      controls.tilt.clearAdaptive();
+      saveSettings(s);
+    }
+    refresh();
+  };
+  const pickTiltMode = async (id: ControlSettings['tiltMode']): Promise<void> => {
+    const previous = s.tiltMode;
+    if (id === 'auto') {
+      s.tiltMode = 'auto';
+      controls.tilt.clearAdaptive();
+      controls.tilt.armNeutral();
+      say('Using automatic tilt.', true);
+    } else if (id === 'calibrated') {
+      if (!(await ensureTilt())) return;
+      if (s.tiltCal) {
+        s.tiltMode = 'calibrated';
+        controls.tilt.clearAdaptive();
+        controls.tilt.armNeutral();
+        say('');
+      } else {
+        saveSettings(s);
+        refresh();
+        await runCalibration(); // saving a calibration switches the mode
+        calBtn.focus({ preventScroll: true });
+        return;
+      }
+    } else {
+      if (!(await ensureTilt())) return;
+      s.tiltMode = 'adaptive';
+      saveSettings(s);
+      refresh();
+      await runQuick(previous);
+      quickBtn.focus({ preventScroll: true });
+      return;
+    }
+    saveSettings(s);
+    refresh();
+  };
+  tiltModeBtns.forEach((b) => b.addEventListener('click', () => void pickTiltMode(b.dataset.tiltMode as ControlSettings['tiltMode'])));
+  calBtn.addEventListener('click', async () => {
+    if (!(await ensureTilt())) return;
+    await runCalibration();
     calBtn.focus({ preventScroll: true });
   });
-  autoBtn.addEventListener('click', () => {
-    controls.tilt.setCalibration(null);
-    controls.tilt.armNeutral();
-    say('Using automatic tilt.', true);
-    refresh();
+  quickBtn.addEventListener('click', async () => {
+    if (!(await ensureTilt())) return;
+    await runQuick(s.tiltMode);
+    quickBtn.focus({ preventScroll: true });
   });
 
   const openSettings = (): void => {
@@ -746,7 +845,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     toastTimer = window.setTimeout(hideToast, 9000);
   };
   controls.tilt.onOrientationChange = () => {
-    if (!started || titleOpen || external || s.mode !== 'tilt' || !s.tiltCal) return;
+    if (!started || titleOpen || external || s.mode !== 'tilt' || s.tiltMode !== 'calibrated' || !s.tiltCal) return;
     showToast('Orientation changed — recalibrate tilt?', 'RECALIBRATE', () => {
       showPause();
       void openWizard('CANCEL').then(() => {

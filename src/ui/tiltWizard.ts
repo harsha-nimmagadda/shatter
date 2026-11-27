@@ -10,10 +10,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-const RING = 2 * Math.PI * 74;
+export const RING = 2 * Math.PI * 74;
 
 /** A phone with a tiny paddle on its screen, tilting left or right; the ring fills while a pose is being held. */
-const ART = `
+export const WIZ_ART = `
 <svg viewBox="0 0 220 170" aria-hidden="true">
   <circle class="wiz-track" cx="110" cy="85" r="74" fill="none" stroke-width="5"/>
   <circle class="wiz-ring" cx="110" cy="85" r="74" fill="none" stroke-width="5" stroke-linecap="round"
@@ -32,10 +32,10 @@ const ART = `
 const COPY: Record<'neutral' | 'left' | 'right' | 'done', { title: string; sub: string }> = {
   neutral: {
     title: 'Hold the phone the way you like to play',
-    sub: 'Any position works: sitting up, on the couch, lying down. Tap READY, then hold still.',
+    sub: 'Any position works: sitting up, on the couch, lying down. Tap READY and stay roughly still for a moment.',
   },
-  left: { title: 'Tilt to steer fully LEFT', sub: 'Tilt as far as you want, so the paddle reaches the left wall. Then hold it there.' },
-  right: { title: 'Tilt to steer fully RIGHT', sub: 'Now the other way, as far as the paddle should reach the right wall. Hold it.' },
+  left: { title: 'Swing fully LEFT', sub: 'Tilt as far left as the paddle should reach, then come back. No need to hold it.' },
+  right: { title: 'Swing fully RIGHT', sub: 'Now the other way: as far right as the paddle should reach, then come back.' },
   done: { title: 'All set!', sub: '' },
 };
 
@@ -52,7 +52,7 @@ export function runTiltWizard(root: HTMLElement, nav: Nav | undefined, tilt: Til
     const dotEls = [0, 1, 2].map(() => el('span'));
     dots.append(...dotEls);
     const art = el('div', 'wiz-art s-neutral');
-    art.innerHTML = ART;
+    art.innerHTML = WIZ_ART;
     const ring = art.querySelector<SVGCircleElement>('.wiz-ring');
     const text = el('div', 'wiz-text');
     const title = el('h2', 'ui-card-title wiz-title');
@@ -97,7 +97,7 @@ export function runTiltWizard(root: HTMLElement, nav: Nav | undefined, tilt: Til
         title.textContent = COPY[step].title;
         sub.textContent =
           step === 'neutral' && cal.armed
-            ? 'Hold still…'
+            ? 'Almost there…'
             : step === 'done' && cal.result
               ? `Left ${Math.round(cal.result.left)}° · Right ${Math.round(cal.result.right)}°`
               : COPY[step].sub;
@@ -109,12 +109,12 @@ export function runTiltWizard(root: HTMLElement, nav: Nav | undefined, tilt: Til
       }
       ring?.setAttribute('stroke-dashoffset', (RING * (1 - cal.progress)).toFixed(1));
       msg.textContent = cal.message;
-      live.textContent = step === 'left' || step === 'right' ? `${Math.round(cal.deviation)}° from your starting position` : '';
+      live.textContent = step === 'left' || step === 'right' ? `${Math.round(cal.deviation)}° from the middle` : '';
     };
 
     const tick = (): void => {
       if (finished) return;
-      const g = tilt.gravity();
+      const g = tilt.gravityFast() ?? tilt.gravity();
       if (g) cal.feed(g, performance.now());
       else if (cal.armed) cal.message = 'Waiting for the motion sensor…';
       render();

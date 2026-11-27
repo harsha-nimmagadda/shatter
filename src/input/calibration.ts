@@ -1,5 +1,4 @@
 import {
-  MIN_RANGE_DEG,
   angleBetween,
   computeCalibration,
   steadySuffix,
@@ -12,7 +11,7 @@ import {
 export type CalStep = 'neutral' | 'left' | 'right' | 'done';
 
 export interface CalibratorOptions {
-  /** How long the phone must stay steady for a capture, ms. */
+  /** How long the phone must stay steady for the neutral capture (or for a held left/right), ms. */
   holdMs?: number;
   /** Max wobble (degrees) while holding. */
   steadyTol?: number;
@@ -28,8 +27,10 @@ export const CAL_MESSAGES: Record<CalibrationError, string> = {
 };
 
 /**
- * The 3-step tilt calibration as a pure state machine. Feed it gravity samples; it waits for the phone to hold
- * steady, captures neutral / full-left / full-right in turn, validates the result and exposes progress for the UI.
+ * The 3-step tilt calibration as a pure state machine. Feed it gravity samples. Neutral needs a short, roughly
+ * steady hold (0.4 s, a few degrees of wobble allowed). Left and right do NOT need a hold: the player swings out
+ * and back, and the extreme reached (the peak) is captured as soon as the phone starts coming back. Holding a pose
+ * steadily still works too. The result is validated and progress is exposed for the UI.
  */
 export class Calibrator {
   step: CalStep = 'neutral';
@@ -47,13 +48,16 @@ export class Calibrator {
 
   private samples: GSample[] = [];
   private since = 0;
+  /** Left/right: the most extreme pose of the current swing and how far from neutral it is (degrees). */
+  private peak: Vec3 | null = null;
+  private peakScore = 0;
   private readonly holdMs: number;
   private readonly tol: number;
   private readonly minDev: number;
 
   constructor(opts: CalibratorOptions = {}) {
-    this.holdMs = opts.holdMs ?? 500;
-    this.tol = opts.steadyTol ?? 2.5;
+    this.holdMs = opts.holdMs ?? 400;
+    this.tol = opts.steadyTol ?? 4;
     this.minDev = opts.minDeviation ?? 8;
   }
 
@@ -78,6 +82,8 @@ export class Calibrator {
     this.g0 = null;
     this.gL = null;
     this.samples = [];
+    this.peak = null;
+    this.peakScore = 0;
   }
 
   private next(step: CalStep, nowMs: number): void {
@@ -85,6 +91,8 @@ export class Calibrator {
     this.samples = [];
     this.progress = 0;
     this.since = nowMs;
+    this.peak = null;
+    this.peakScore = 0;
   }
 
   /** Feed one (low-passed) unit gravity vector. */
@@ -98,26 +106,54 @@ export class Calibrator {
 
     const steady = steadySuffix(this.samples, this.tol);
     const mean = steady.mean;
+    // How far out the phone is on the side being asked for (left: any side away from neutral; right: past neutral,
+    // away from the left capture).
+    let score = 0;
     let eligible = true;
-    if (this.step === 'left') eligible = !!this.g0 && angleBetween(g, this.g0) >= this.minDev;
-    else if (this.step === 'right') eligible = !!this.g0 && !!this.gL && angleBetween(g, this.g0) >= this.minDev && angleBetween(g, this.gL) >= 2 * MIN_RANGE_DEG;
+    if (this.step === 'left' || this.step === 'right') {
+      const g0 = this.g0;
+      if (!g0) return;
+      score = angleBetween(g, g0);
+      if (this.step === 'right' && this.gL) score = Math.min(score, angleBetween(g, this.gL) - angleBetween(g0, this.gL));
+      eligible = score >= this.minDev;
+    }
+    if (this.peak && this.peakScore >= this.minDev) {
+      // Left / right: the swing reached a peak. Capture it once the phone turns back.
+      if (angleBetween(g, this.peak) >= Math.max(3.5, 0.3 * this.peakScore)) {
+        this.capture(this.peak, nowMs);
+        return;
+      }
+    }
     if (!eligible) {
-      this.progress = 0;
-      // Moving to the target pose: no nagging yet, just wait. Restart the steady window when they arrive.
+      // Between poses: no nagging, just wait. Restart the steady window when they arrive.
       this.samples = this.samples.slice(-1);
-      if (this.step === 'right' && this.deviation >= this.minDev && this.gL && angleBetween(g, this.gL) < 2 * MIN_RANGE_DEG) {
+      this.progress = this.step === 'neutral' ? 0 : Math.min(0.9, Math.max(0, score) / this.minDev) * 0.5;
+      if (this.step === 'right' && this.deviation >= this.minDev && this.gL) {
         this.message = 'Now tilt the other way.';
-      } else if (this.message === 'Hold steady for a moment.') this.message = '';
+      } else if (nowMs - this.since > 4000) this.message = 'Swing out, then come back a little.';
       return;
     }
-    this.progress = Math.min(1, steady.durationMs / this.holdMs);
+    if (this.step === 'neutral') {
+      this.progress = Math.min(1, steady.durationMs / this.holdMs);
+      if (steady.durationMs >= this.holdMs && steady.count >= 5) {
+        this.capture(mean, nowMs);
+        return;
+      }
+      // Wobbling for a while: say so kindly.
+      if (nowMs - this.since > 2500 && steady.durationMs < this.holdMs * 0.4) this.message = 'Hold steady for a moment.';
+      else if (steady.durationMs > 250) this.message = '';
+      return;
+    }
+    // Left / right: remember the peak (captured above once the phone turns back) or capture a steady hold.
+    if (!this.peak || score > this.peakScore) {
+      this.peak = g;
+      this.peakScore = score;
+    }
+    this.progress = Math.min(1, 0.5 + 0.5 * Math.min(1, this.peakScore / (this.minDev * 1.6)));
     if (steady.durationMs >= this.holdMs && steady.count >= 5) {
       this.capture(mean, nowMs);
       return;
     }
-    // Eligible but wobbling for a while: say so kindly.
-    if (nowMs - this.since > 2500 && steady.durationMs < this.holdMs * 0.4) this.message = 'Hold steady for a moment.';
-    else if (steady.durationMs > 250) this.message = '';
   }
 
   private capture(mean: Vec3, nowMs: number): void {

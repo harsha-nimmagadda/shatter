@@ -374,6 +374,9 @@ function update(dt: number): void {
   const intro = menus.introActive();
   if (introWas && !intro) controls.tilt.armNeutral(); // the serve starts now: take the held position as neutral
   introWas = intro;
+  // Adaptive tilt: learn only while a ball is really in play; ask for its quick start at a serve when it is due.
+  controls.tilt.setInPlay(!intro && world.status === 'playing' && world.balls.some((b) => !b.stuck));
+  controls.tilt.pollServe(!intro && world.status === 'serve' && st.mode === 'tilt');
   if (intro && inp.fire) {
     menus.dismissIntro();
     inp.fire = false;
@@ -533,7 +536,7 @@ function render(alpha: number): void {
   hideBoot();
 }
 
-if (params.has('fps')) (window as unknown as { __shatter?: unknown }).__shatter = { renderer, get world() { return world; } };
+if (params.has('fps')) (window as unknown as { __shatter?: unknown }).__shatter = { renderer, controls, get world() { return world; } };
 new Loop(update, render).start();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

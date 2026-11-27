@@ -1,18 +1,24 @@
 {
   "name": "Shatter",
   "short_name": "Shatter",
-  "description": "A hand-drawn brick breaker.",
+  "description": "A neon arcade brick breaker.",
   "display": "fullscreen",
   "orientation": "portrait",
   "start_url": "./",
   "scope": "./",
-  "background_color": "#f6f1e3",
-  "theme_color": "#f6f1e3",
+  "background_color": "#05010F",
+  "theme_color": "#05010F",
   "icons": [
     {
       "src": "icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
     }
   ]

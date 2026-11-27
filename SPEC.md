@@ -74,13 +74,19 @@ Capsules are round icon badges with no text.
 Re-catching a timed power-up resets its timer. Removed: expand, shrink, multiball, split, fireball,
 through, laser, speedup, slowdown, extralife, killpaddle, inkblot.
 
-## Visual direction
-- Paper `#F9F6EE`, ruled lines `#DCE8F5`, margin `#F2C6C6`; keep the playfield free of heavy texture.
-- Brick inks: graphite `#5A5E66`, ballpoint blue `#2B5B9E`, marker `#1E1E22`, clip silver `#9EA4AD`.
-- Highlighter accents for active things: `#FFE600`, `#00E5FF`, `#FF3B5C`, `#39FF14`.
-- Ball leaves a short highlighter trail tinted by the active ball power-up.
-- Line boil stays on bricks, UI and particles; ball and paddle outlines boil less.
-- Generated art (ComfyUI) must be flat, matte and ink-outlined. Gemini's images are mood boards only.
+## Visual direction (v1.2 neon arcade, 2026-11-27; replaces the notebook look)
+- Synthwave backdrop (purple sky, stars, striped sun, perspective grid that speeds up and turns cyan with the combo
+  and pulses to the music beat), neon-tube walls, glowing glass bricks. All art is procedural Canvas 2D baked into
+  cached sprites; no image assets.
+- Bricks: 1/2/3 HP = cyan / pink / violet with HP pips and glass cracks; Metal Clip = chrome "ARMOR" plate;
+  Doodle Bomb = red bomb glyph (pulses); Sliding Tab = yellow with arrows and a dotted rail; Re-sketching = mint
+  with a cycle glyph; Invisible Ink = flickering dashed "?" outline, revealed as a holographic tile.
+- Power-ups keep their engine ids but get neon display names: Triple Ball, Meteor, Homing, Splash, Slow-mo, Wide,
+  Sticky, Lasers, Wipe, 1-UP, Magnet, Shield, Shrink, Split, Overdrive ×2. Capsules: round badges in the category
+  colour (cyan ball, green paddle, gold utility); hazards are red spinning saw-blade badges.
+- Juice: shards/sparks/shockwaves, screen shake, flashes, combo fireworks, level intro, haptics. "Reduced effects"
+  setting cuts particles, flashes and background motion. Debug sheet: `?gallery`.
 
-## Audio (new SFX)
-staple, clip loosen, clip pop, scissors snip, highlighter splash, paperclip, gold star, red pen, combo-up.
+## Audio
+All SFX and music are synthesized on the device (`src/audio/synth.ts`, rendered in a worker); no audio files.
+Two original chiptune loops (Music on/off + volume settings); break sounds climb a pentatonic ladder with the rally.

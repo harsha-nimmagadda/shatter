@@ -4,59 +4,26 @@ import {
   BAD_POWERS,
   CATEGORY_COLORS,
   FLOAT_LIFE,
-  ICON_IDS,
   POWER_NAMES,
   ballRenderPos,
   categoryColor,
   clipTilt,
   comboHudText,
+  comboTier,
   comboLabel,
   floatTextState,
   isBadPower,
   lerpTowards,
   powerName,
-  resolveIcon,
   snapshotBalls,
   trailColor,
 } from '../src/render/powerVisuals';
-import manifest from '../public/assets/world1/manifest.json';
 
-describe('icon mapping', () => {
-  it('covers every engine power type', () => {
-    for (const t of POWER_TYPES) expect(t in ICON_IDS, t).toBe(true);
-  });
-  it('uses the revamp manifest ids', () => {
-    expect(ICON_IDS).toMatchObject({
-      photocopy: 'icon-photocopy',
-      highlighter: 'icon-highlighter',
-      correction: 'icon-correction-tape',
-      gluestick: 'icon-glue-stick',
-      stapler: 'icon-stapler',
-      goldstar: 'icon-gold-star',
-      paperclip: 'icon-paperclip',
-      scissors: 'icon-scissors',
-      redpen: 'icon-red-pen',
-      crumpled: 'icon-crumpled',
-      plane: 'icon-paper-plane',
-      ruler: 'icon-ruler',
-      eraser: 'icon-eraser',
-      stickynote: 'icon-sticky-note',
-      sharpener: 'icon-sharpener',
-    });
-  });
-  it('kept icons exist in the manifest (new ones arrive with the generated art)', () => {
-    for (const t of ['crumpled', 'plane', 'ruler', 'eraser', 'stickynote', 'sharpener'] as const) {
-      expect(Object.keys(manifest)).toContain(ICON_IDS[t]);
-    }
-  });
-  it('falls back when art is missing, and never throws on unknown types', () => {
-    expect(resolveIcon('stapler', () => true)).toEqual({ source: 'art', id: 'icon-stapler' });
-    expect(resolveIcon('stapler', () => false).source).toBe('doodle');
-    expect(resolveIcon('nope', () => true).source).toBe('doodle');
-  });
+describe('power names', () => {
   it('has a name for every power', () => {
     for (const t of POWER_TYPES) expect(POWER_NAMES[t].length).toBeGreaterThan(2);
-    expect(powerName('zzz')).toBe('Power!');
+    expect(powerName('zzz')).toBe('POWER!');
+    expect(new Set(Object.values(POWER_NAMES)).size).toBe(POWER_TYPES.length);
   });
 });
 
@@ -71,7 +38,7 @@ describe('good / bad', () => {
 
 describe('float text', () => {
   it('lives about 0.8 s, fades out and rises', () => {
-    expect(FLOAT_LIFE).toBeCloseTo(0.8);
+    expect(FLOAT_LIFE).toBeCloseTo(0.9);
     const a = floatTextState(0);
     expect(a.alpha).toBe(1);
     expect(a.rise).toBe(0);
@@ -80,7 +47,7 @@ describe('float text', () => {
     expect(mid.alpha).toBeLessThan(1);
     expect(mid.alpha).toBeGreaterThan(0);
     expect(mid.rise).toBeGreaterThan(a.rise);
-    expect(floatTextState(0.8).done).toBe(true);
+    expect(floatTextState(0.9).done).toBe(true);
     expect(floatTextState(5).alpha).toBe(0);
   });
 });
@@ -144,11 +111,12 @@ describe('category colours', () => {
 
 describe('ball trail tint', () => {
   it('follows the active ball power', () => {
-    expect(trailColor({}).color).toBe('#FFE600');
+    expect(trailColor({}).color).toBe('#7FD8FF');
     expect(trailColor({ highlighter: 3 }).color).toBe('#39FF14');
     expect(trailColor({ plane: 3 }).color).toBe('#00E5FF');
     expect(trailColor({ redpen: 3 }).color).toBe('#FF3B5C');
-    expect(trailColor({ crumpled: 3 }).color).toBe('#8A8D93');
+    expect(trailColor({ crumpled: 3 }).color).toBe('#FF7A1A');
+    expect(trailColor({ crumpled: 3, plane: 3 }).color).toBe('#FF7A1A');
     expect(trailColor({}).alpha).toBeLessThan(trailColor({ plane: 1 }).alpha);
   });
 });
@@ -164,6 +132,8 @@ describe('clip / combo helpers', () => {
     expect(comboLabel(2)).toBe('×2');
     expect(comboLabel(3)).toBe('×3');
     expect(comboHudText(1)).toBe('');
-    expect(comboHudText(2)).toBe('×2.0 COMBO');
+    expect(comboHudText(2)).toBe('×2 COMBO');
+    expect(comboHudText(1.5)).toBe('×1.5 COMBO');
+    expect([1, 1.5, 2, 3].map(comboTier)).toEqual([0, 1, 2, 3]);
   });
 });

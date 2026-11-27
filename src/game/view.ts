@@ -2,7 +2,7 @@
 export const LOGICAL_W = 540;
 export const LOGICAL_H = 960;
 
-const MARGIN_COLOR = '#f6f1e3';
+const MARGIN_COLOR = '#05010F';
 const MAX_DPR = 2;
 
 export interface Fit {

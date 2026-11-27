@@ -1,12 +1,10 @@
-import '@fontsource/patrick-hand/latin-400.css';
 import './style.css';
 import { View } from './game/view';
 import { Loop } from './game/loop';
-import { LEVEL_1, POWER_TYPES, TEST_LEVELS, createWorld, drainEvents, step, type PowerType, type World } from './engine';
+import { LEVEL_1, POWER_TYPES, TEST_LEVELS, createWorld, drainEvents, step, type GameEvent, type PowerType, type World } from './engine';
 import { Controls } from './input/controls';
-import { loadWorldAssets } from './render/assets';
-import { NOTEBOOK_SKIN } from './render/skin';
 import { Renderer } from './render/renderer';
+import { drawGallery } from './render/gallery';
 import { snapshotBalls, type XY } from './render/powerVisuals';
 import { createControlsUi } from './ui/controlsUi';
 import { SoundManager } from './audio/sound';
@@ -18,16 +16,18 @@ if (!ctx) throw new Error('2D canvas not supported');
 
 const view = new View(canvas);
 const controls = new Controls(canvas, view);
-const sound = new SoundManager({ muted: controls.settings.muted, volume: controls.settings.volume });
+const st = controls.settings;
+const sound = new SoundManager({ muted: st.muted, volume: st.volume, music: st.music, musicVolume: st.musicVolume });
 const ui = createControlsUi(document.getElementById('ui') as HTMLElement, controls, sound);
 let lastFrame = performance.now();
 
-// Debug URL params: ?level=<explosive|moving|regen|hidden|mixed>, ?power=<type>, ?drop=<0..1>
+// Debug URL params: ?level=<explosive|moving|regen|hidden|mixed>, ?power=<type>, ?drop=<0..1>, ?auto
 const params = new URLSearchParams(location.search);
 const debugLevel = TEST_LEVELS[params.get('level') ?? ''] ?? LEVEL_1;
 const powerParam = params.get('power');
 const forcedPower = (POWER_TYPES as readonly string[]).includes(powerParam ?? '') ? (powerParam as PowerType) : undefined;
 const autoPlay = params.has('auto');
+const gallery = params.has('gallery');
 const dropParam = params.get('drop');
 const dropChance = dropParam !== null && dropParam !== '' && Number.isFinite(Number(dropParam)) ? Math.max(0, Math.min(1, Number(dropParam))) : undefined;
 
@@ -38,7 +38,7 @@ const newWorld = (): World =>
     ...(dropChance !== undefined ? { dropChance } : {}),
   });
 let world = newWorld();
-let renderer = new Renderer();
+const renderer = new Renderer();
 renderer.loadLevel(world);
 /** Ball positions before the last step, for render interpolation. */
 const prev: XY[] = snapshotBalls(world.balls, []);
@@ -50,6 +50,8 @@ function update(dt: number): void {
     world = newWorld();
     renderer.loadLevel(world);
     snapshotBalls(world.balls, prev);
+    sound.duckMusic(false);
+    sound.nextTrack();
     return;
   }
   snapshotBalls(world.balls, prev);
@@ -68,6 +70,28 @@ function update(dt: number): void {
   step(world, inp, dt);
 }
 
+/** Short vibrations for the big moments (Android; iOS Safari has no vibrate and ignores this). */
+function haptics(events: readonly GameEvent[]): void {
+  if (!st.haptics || typeof navigator.vibrate !== 'function') return;
+  const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+  if (ua && !ua.hasBeenActive) return;
+  let ms = 0;
+  for (const e of events) {
+    if (e.type === 'lifeLost' || e.type === 'gameover') ms = Math.max(ms, 120);
+    else if (e.type === 'explode') ms = Math.max(ms, 40);
+    else if (e.type === 'won' || e.type === 'extraLife') ms = Math.max(ms, 60);
+    else if (e.type === 'powerup' || e.type === 'combo') ms = Math.max(ms, 18);
+    else if (e.type === 'brickBreak') ms = Math.max(ms, 8);
+  }
+  if (ms > 0) {
+    try {
+      navigator.vibrate(ms);
+    } catch {
+      /* not allowed before a gesture */
+    }
+  }
+}
+
 function render(alpha: number): void {
   const now = performance.now();
   const frameDt = Math.min(0.1, (now - lastFrame) / 1000);
@@ -77,35 +101,29 @@ function render(alpha: number): void {
   if (controls.pausePressed()) ui.togglePause();
   const c = ctx as CanvasRenderingContext2D;
   view.begin(c);
+  if (gallery) {
+    drawGallery(c, view.pixelScale, now / 1000);
+    return;
+  }
 
-  renderer.shake.enabled = controls.settings.shake;
+  renderer.shake.enabled = st.shake && !st.reducedFx;
+  renderer.reduced = st.reducedFx;
+  renderer.beat = sound.beat();
+  renderer.showStatus = ui.started();
   renderer.setPixelScale(view.pixelScale);
   const events = drainEvents(world);
-  for (const c of soundsForEvents(events, world)) sound.play(c.id, { pan: panFromX(c.x, world.width), ...(c.volume !== undefined ? { volume: c.volume } : {}) });
+  if (events.length) {
+    for (const s of soundsForEvents(events, world)) {
+      sound.play(s.id, { pan: panFromX(s.x, world.width), ...(s.volume !== undefined ? { volume: s.volume } : {}), ...(s.pitch !== undefined ? { pitch: s.pitch } : {}) });
+    }
+    for (const e of events) if (e.type === 'won' || e.type === 'gameover') sound.duckMusic(true);
+    haptics(events);
+  }
   renderer.onEvents(events, world);
   renderer.draw(c, world, prev, alpha, now / 1000);
 }
 
-const loop = new Loop(update, render);
-// Behind the start overlay: wait (briefly, ~4 s max) for the handwritten font and the generated art.
-// Anything that fails or is late just leaves the procedural look in place.
-const fontReady: Promise<unknown> = document.fonts
-  ? document.fonts.load('28px "Patrick Hand"').catch(() => undefined)
-  : Promise.resolve();
-const artReady = loadWorldAssets();
-// Sounds load in parallel but never delay the start: until they arrive the synth fallback plays.
-void sound.load();
-const timeout = new Promise<null>((r) => setTimeout(() => r(null), 4000));
-// Art is swapped in whenever it finishes loading, even after the timeout (slow network or a
-// backgrounded tab can stall image decoding); until then the procedural look is shown.
-const allReady = Promise.all([fontReady, artReady]).then(([, a]) => a);
-void allReady.then((assets) => {
-  renderer = new Renderer({ ...NOTEBOOK_SKIN, assets });
-  renderer.loadLevel(world);
-  const title = assets.get('title')[0];
-  if (title) ui.setTitleImage(title);
-});
-void Promise.race([allReady, timeout]).then(() => loop.start());
+new Loop(update, render).start();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {

@@ -12,8 +12,6 @@ export interface ControlsUi {
   togglePause(): void;
   /** Pause automatically if playing (focus loss). */
   autoPause(): void;
-  /** Swap the text title on the start overlay for the hand-lettered image (text stays if it is not an <img>). */
-  setTitleImage(img: CanvasImageSource): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -69,14 +67,24 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   };
 
   // ---- Start overlay ----
-  const start = el('div', 'ui-overlay');
-  const startTitle = el('h1', undefined, 'Shatter');
-  start.append(startTitle);
-  const startBtn = el('button', 'ui-btn big', 'Tap to start');
-  start.append(startBtn);
+  const start = el('div', 'ui-overlay ui-start');
+  const logo = el('h1', 'ui-logo');
+  logo.setAttribute('aria-label', 'Shatter');
+  // Each letter is its own span so the logo can "shatter" in with a stagger.
+  'SHATTER'.split('').forEach((ch, i) => {
+    const sp = el('span', undefined, ch);
+    sp.style.setProperty('--i', String(i));
+    sp.setAttribute('aria-hidden', 'true');
+    logo.append(sp);
+  });
+  const tag = el('p', 'ui-tag', 'NEON BRICK BREAKER');
+  const startBtn = el('button', 'ui-btn big', 'PLAY');
+  const tip = el('p', 'ui-tip', 'Catch the falling power-ups. Red spiky ones are trouble!');
+  start.append(logo, tag, startBtn, tip);
   startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
     sound?.unlock();
+    sound?.playMusic(0);
     void enterImmersive();
     let hint = 'Drag anywhere to move · tap to launch';
     if (s.mode === 'tilt') {
@@ -91,8 +99,8 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
 
   // ---- Pause overlay ----
   const pauseOv = el('div', 'ui-overlay');
-  pauseOv.append(el('h1', undefined, 'Paused'));
-  const resumeBtn = el('button', 'ui-btn big', 'Tap to resume');
+  pauseOv.append(el('h1', 'ui-h', 'PAUSED'));
+  const resumeBtn = el('button', 'ui-btn big', 'RESUME');
   pauseOv.append(resumeBtn);
   const hidePause = (): void => {
     if (!pauseShown) return;
@@ -112,22 +120,22 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   // ---- Settings panel ----
   const gear = el('button', 'ui-btn ui-gear');
   gear.innerHTML =
-    '<svg viewBox="0 0 32 32" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="M24.5 15.2c.4 5-3.6 9.3-8.6 9.3s-8.9-4.3-8.2-9.2c.7-4.6 4.5-8 8.8-7.7 4.2.3 7.6 3.6 8 7.6z"/>' +
-    '<path d="M26.0 16.0L30.0 16.4M23.1 23.1L25.6 26.2M16.0 26.0L15.6 30.0M8.9 23.1L5.8 25.6M6.0 16.0L2.0 15.6M8.9 8.9L6.4 5.8M16.0 6.0L16.4 2.0M23.1 8.9L26.2 6.4"/>' +
-    '<path d="M18.6 15.6c.2 1.7-1.2 3-2.8 2.9-1.6-.2-2.7-1.6-2.4-3.1.3-1.5 1.6-2.4 3-2.2 1.2.2 2.1 1.2 2.2 2.4z"/></svg>';
+    '<svg viewBox="0 0 32 32" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="16" cy="16" r="4.2"/>' +
+    '<path d="M16 3.5v4M16 24.5v4M3.5 16h4M24.5 16h4M7.2 7.2l2.8 2.8M22 22l2.8 2.8M7.2 24.8l2.8-2.8M22 10l2.8-2.8"/>' +
+    '<circle cx="16" cy="16" r="9"/></svg>';
   gear.setAttribute('aria-label', 'Settings');
   root.appendChild(gear);
 
   const panelOv = el('div', 'ui-overlay');
   const panel = el('div', 'ui-panel');
-  panel.append(el('h2', undefined, 'Settings'));
+  panel.append(el('h2', undefined, 'SETTINGS'));
 
   const modeRow = el('div', 'ui-row');
   modeRow.append(el('span', undefined, 'Control mode'));
   const seg = el('div', 'ui-seg');
-  const tiltBtn = el('button', 'ui-btn', 'Tilt');
-  const dragBtn = el('button', 'ui-btn', 'Drag');
+  const tiltBtn = el('button', 'ui-btn', 'TILT');
+  const dragBtn = el('button', 'ui-btn', 'DRAG');
   seg.append(tiltBtn, dragBtn);
   modeRow.append(seg);
   const msg = el('div', 'ui-msg');
@@ -182,15 +190,40 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     volume.input.disabled = s.muted;
   });
   soundRow.append(soundBox);
+  const toggle = (label: string, get: () => boolean, set: (v: boolean) => void) => {
+    const row = el('label', 'ui-row inline');
+    row.append(el('span', undefined, label));
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = get();
+    box.addEventListener('change', () => {
+      set(box.checked);
+      saveSettings(s);
+    });
+    row.append(box);
+    return row;
+  };
+  const musicRow = toggle('Music', () => s.music, (v) => {
+    s.music = v;
+    sound?.setMusic(v);
+    musicVol.input.disabled = !v;
+  });
+  const musicVol = slider('Music volume', 0, 1, 0.05, () => s.musicVolume, (v) => {
+    s.musicVolume = v;
+    sound?.setMusicVolume(v);
+  });
+  musicVol.input.disabled = !s.music;
+  const fxRow = toggle('Reduced effects', () => s.reducedFx, (v) => (s.reducedFx = v));
+  const hapticsRow = toggle('Vibration', () => s.haptics, (v) => (s.haptics = v));
   const volume = slider('Volume', 0, 1, 0.05, () => s.volume, (v) => {
     s.volume = v;
     sound?.setVolume(v);
   });
   volume.input.disabled = s.muted;
-  volume.input.addEventListener('change', () => sound?.play('paddle'));
+  volume.input.addEventListener('change', () => sound?.play('powerup'));
   const recal = el('button', 'ui-btn', 'Recalibrate');
   const dragSens = slider('Drag sensitivity', 0.5, 3, 0.1, () => s.dragSensitivity, (v) => (s.dragSensitivity = v));
-  const closeBtn = el('button', 'ui-btn', 'Close');
+  const closeBtn = el('button', 'ui-btn', 'DONE');
 
   const refresh = (): void => {
     tiltBtn.classList.toggle('on', s.mode === 'tilt');
@@ -235,7 +268,11 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     msg.textContent = 'Calibrated.';
   });
 
-  panel.append(modeRow, tiltSens.row, invertRow, recal, dragSens.row, shakeRow, soundRow, volume.row, msg, closeBtn);
+  panel.append(
+    modeRow, tiltSens.row, invertRow, recal, dragSens.row,
+    soundRow, volume.row, musicRow, musicVol.row,
+    shakeRow, fxRow, hapticsRow, msg, closeBtn,
+  );
   panelOv.append(panel);
 
   const openSettings = (): void => {
@@ -272,16 +309,5 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
       else showPause();
     },
     autoPause: showPause,
-    setTitleImage: (src) => {
-      if (!(src instanceof HTMLImageElement) || !src.src || !startTitle.isConnected) return;
-      const img = el('img', 'ui-title');
-      img.alt = 'Shatter';
-      img.draggable = false;
-      img.addEventListener('error', () => {
-        img.replaceWith(startTitle);
-      });
-      img.src = src.src;
-      startTitle.replaceWith(img);
-    },
   };
 }

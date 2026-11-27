@@ -5,6 +5,22 @@ export interface SoundCall {
   /** Logical x of the source, for panning. */
   x?: number;
   volume?: number;
+  /** playbackRate (musical pitch); omitted = small random jitter. */
+  pitch?: number;
+}
+
+/** Major-pentatonic ladder: each brick broken in one rally plays one step higher. */
+const LADDER = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+
+/** Pitch (playbackRate) of the break sound for the n-th break of a rally (n >= 1). */
+export function breakPitch(n: number): number {
+  const i = Math.max(0, Math.min(LADDER.length - 1, Math.floor(n) - 1));
+  return Math.pow(2, LADDER[i] / 12);
+}
+
+/** Pitch of the combo jingle per multiplier: ×1.5 root, ×2 a third up, ×3 a fifth up. */
+export function comboPitch(mul: number): number {
+  return mul >= 3 ? Math.pow(2, 7 / 12) : mul >= 2 ? Math.pow(2, 4 / 12) : 1;
 }
 
 /** Catch sounds for powers that have their own SFX; other hazards use 'powerdown', the rest 'powerup'. */
@@ -42,7 +58,7 @@ const ONE_TO_ONE: Partial<Record<GameEvent['type'], string>> = {
 };
 
 /** Pure: maps one frame's game events to sound calls. */
-export function soundsForEvents(events: readonly GameEvent[], world?: Pick<World, 'bricks'>): SoundCall[] {
+export function soundsForEvents(events: readonly GameEvent[], world?: Pick<World, 'bricks'> & { combo?: number }): SoundCall[] {
   const out: SoundCall[] = [];
   const broke = new Set<number>();
   for (const e of events) if (e.type === 'brickBreak' && e.brickId !== undefined) broke.add(e.brickId);
@@ -58,7 +74,7 @@ export function soundsForEvents(events: readonly GameEvent[], world?: Pick<World
       }
       case 'brickBreak':
         // Several breaks in one frame: one break, then a single shred.
-        if (breaks === 0) out.push({ id: 'break', x: e.x });
+        if (breaks === 0) out.push(world?.combo ? { id: 'break', x: e.x, pitch: breakPitch(world.combo) } : { id: 'break', x: e.x });
         else if (breaks === 1) out.push({ id: 'shred', x: e.x });
         breaks++;
         break;
@@ -75,6 +91,9 @@ export function soundsForEvents(events: readonly GameEvent[], world?: Pick<World
       case 'extraLife':
         if (!gold) out.push({ id: 'goldstar', x: e.x });
         gold = true;
+        break;
+      case 'combo':
+        out.push({ id: 'combo', x: e.x, pitch: comboPitch(e.value ?? 1.5) });
         break;
       default: {
         const id = ONE_TO_ONE[e.type];

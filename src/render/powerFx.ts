@@ -1,7 +1,6 @@
 import { CONFIG } from '../engine';
 import { FLOAT_LIFE, floatTextState } from './powerVisuals';
-import type { Sprite } from './boil';
-import type { Skin } from './skin';
+import { C, font } from './palette';
 
 const W = CONFIG.width;
 const H = CONFIG.height;
@@ -23,6 +22,7 @@ const FLYER_LIFE = 0.7;
 export class PowerFx {
   private readonly fText: string[] = new Array<string>(MAX_FLOATS).fill('');
   private readonly fColor: string[] = new Array<string>(MAX_FLOATS).fill('');
+  private readonly fSize = new Float32Array(MAX_FLOATS);
   private readonly fx = new Float32Array(MAX_FLOATS);
   private readonly fy = new Float32Array(MAX_FLOATS);
   private readonly fAge = new Float32Array(MAX_FLOATS).fill(-1);
@@ -79,12 +79,13 @@ export class PowerFx {
     return this.seed / 4294967296;
   }
 
-  addFloat(text: string, x: number, y: number, color: string): void {
+  addFloat(text: string, x: number, y: number, color: string, size = 26): void {
     const i = this.fCursor;
     this.fCursor = (i + 1) % MAX_FLOATS;
     this.fText[i] = text;
     this.fColor[i] = color;
-    this.fx[i] = Math.max(60, Math.min(W - 60, x));
+    this.fSize[i] = size;
+    this.fx[i] = Math.max(text.length * size * 0.36, Math.min(W - text.length * size * 0.36, x));
     this.fy[i] = y;
     this.fAge[i] = 0;
   }
@@ -184,7 +185,8 @@ export class PowerFx {
     this.speedT = Math.max(0, this.speedT - dt);
   }
 
-  drawFlyers(ctx: CanvasRenderingContext2D, skin: Skin): void {
+  /** Popped armour plates spinning off the playfield. */
+  drawFlyers(ctx: CanvasRenderingContext2D): void {
     for (let i = 0; i < MAX_FLYERS; i++) {
       const a = this.flAge[i];
       if (a < 0) continue;
@@ -194,123 +196,133 @@ export class PowerFx {
       ctx.translate(this.flX[i], this.flY[i]);
       ctx.rotate(this.flRot[i]);
       ctx.globalAlpha = Math.min(1, (1 - a / FLYER_LIFE) * 2);
-      ctx.fillStyle = skin.steel;
+      ctx.fillStyle = '#8F9AB0';
       ctx.fillRect(-w / 2, -h / 2, w, h);
-      ctx.strokeStyle = skin.ink;
-      ctx.lineWidth = 1.6;
+      ctx.fillStyle = '#E8EEFF';
+      ctx.fillRect(-w / 2, -h / 2, w, h * 0.3);
+      ctx.strokeStyle = '#2A3040';
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(-w / 2, -h / 2, w, h);
-      ctx.fillStyle = '#5b6068';
-      ctx.beginPath();
-      ctx.arc(-w / 2 + 6, 0, 2.4, 0, Math.PI * 2);
-      ctx.arc(w / 2 - 6, 0, 2.4, 0, Math.PI * 2);
-      ctx.fill();
       ctx.restore();
     }
     ctx.globalAlpha = 1;
   }
 
-  /** Draws active eraser sweeps; onCrumb is called with the eraser's leading edge so crumbs can be emitted. */
-  drawErasers(ctx: CanvasRenderingContext2D, sprite: Sprite, w: number, h: number, time: number, onCrumb: (x: number, y: number) => void): void {
+  /** WIPE: a bright scan beam sweeping across the cleared row; onSpark gets the beam position. */
+  drawErasers(ctx: CanvasRenderingContext2D, onSpark: (x: number, y: number) => void): void {
     for (let i = 0; i < MAX_ERASERS; i++) {
       const a = this.eAge[i];
       if (a < 0) continue;
       const t = a / ERASER_LIFE;
-      const x = -w + (W + w * 2) * t;
-      ctx.globalAlpha = Math.min(1, (1 - t) * 4);
-      sprite.draw(ctx, x - w / 2, this.ey[i] - h / 2, time, i + 3);
+      const x = -20 + (W + 40) * t;
+      const y = this.ey[i];
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.min(1, (1 - t) * 3);
+      ctx.fillStyle = C.cyan;
+      ctx.globalAlpha *= 0.25;
+      ctx.fillRect(0, y - 15, x, 30);
+      ctx.globalAlpha = Math.min(1, (1 - t) * 3);
+      ctx.fillStyle = C.white;
+      ctx.fillRect(x - 3, y - 26, 6, 52);
+      ctx.fillStyle = C.cyan;
+      ctx.fillRect(x - 9, y - 22, 18, 44);
+      ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
-      onCrumb(x + w * 0.2, this.ey[i] + h * 0.35);
+      onSpark(x, y);
     }
   }
 
-  drawBlasts(ctx: CanvasRenderingContext2D, skin: Skin): void {
+  /** Explosion: hot core flash plus a double shockwave ellipse the size of the blast area. */
+  drawBlasts(ctx: CanvasRenderingContext2D): void {
     const rx = CONFIG.explosionRx;
     const ry = CONFIG.explosionRy;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
+    ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < MAX_BLASTS; i++) {
       const a = this.bAge[i];
       if (a < 0) continue;
       const t = a / BLAST_LIFE;
-      const grow = 0.45 + 0.55 * (1 - (1 - Math.min(1, t * 2.5)) ** 2);
-      const alpha = Math.min(1, (1 - t) * 1.8);
+      const grow = 1 - (1 - Math.min(1, t * 1.6)) ** 3;
       const cx = this.bx[i];
       const cy = this.by[i];
-      for (let pass = 0; pass < 2; pass++) {
+      // Core.
+      if (t < 0.45) {
+        const k = 1 - t / 0.45;
+        ctx.globalAlpha = k * 0.85;
+        ctx.fillStyle = C.yellow;
         ctx.beginPath();
-        const rot = pass * 0.26 + t * 0.4;
-        const sc = pass === 0 ? 1 : 0.82;
-        for (let k = 0; k < STAR_PTS; k++) {
-          const ang = (k / STAR_PTS) * Math.PI * 2 + rot;
-          const rr = (k % 2 === 0 ? 1 : 0.5) * this.bRad[i * STAR_PTS + k] * grow * sc;
-          const px = cx + Math.cos(ang) * rx * rr * 0.9;
-          const py = cy + Math.sin(ang) * ry * rr * 0.9;
-          if (k === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-        if (pass === 0) {
-          ctx.globalAlpha = alpha * 0.55;
-          ctx.fillStyle = '#ffd23f';
-          ctx.fill();
-        }
-        ctx.globalAlpha = alpha * (pass === 0 ? 0.95 : 0.6);
-        ctx.strokeStyle = pass === 0 ? '#e8431f' : skin.ink;
-        ctx.lineWidth = pass === 0 ? 2.6 : 1.4;
-        ctx.stroke();
-      }
-      // Ink-splatter ring: dark blots flung out past the star.
-      ctx.fillStyle = skin.ink;
-      ctx.globalAlpha = alpha * 0.8;
-      for (let k = 0; k < STAR_PTS; k++) {
-        const ang = (k / STAR_PTS) * Math.PI * 2 + 0.2;
-        const rr = (1.05 + 0.35 * this.bRad[i * STAR_PTS + k]) * grow;
+        ctx.ellipse(cx, cy, rx * 0.55 * (0.6 + grow * 0.4), ry * 0.55 * (0.6 + grow * 0.4), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = k;
+        ctx.fillStyle = C.white;
         ctx.beginPath();
-        ctx.arc(cx + Math.cos(ang) * rx * rr, cy + Math.sin(ang) * ry * rr, 1.4 + 2.2 * this.bRad[i * STAR_PTS + (k + 3) % STAR_PTS] * (1 - t), 0, Math.PI * 2);
+        ctx.ellipse(cx, cy, rx * 0.25, ry * 0.25, 0, 0, Math.PI * 2);
         ctx.fill();
       }
+      // Shockwaves.
+      ctx.globalAlpha = Math.max(0, 1 - t);
+      ctx.strokeStyle = C.orange;
+      ctx.lineWidth = 6 * (1 - t) + 1;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx * grow * 1.1, ry * grow * 1.1, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = C.red;
+      ctx.lineWidth = 3 * (1 - t) + 0.5;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx * grow * 0.8, ry * grow * 0.8, 0, 0, Math.PI * 2);
+      ctx.stroke();
     }
+    ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
   }
 
-  drawFloats(ctx: CanvasRenderingContext2D, skin: Skin): void {
-    ctx.font = `26px ${skin.font}`;
+  /** Floating labels (power names, combo, +1): pop in big, settle, rise and fade. */
+  drawFloats(ctx: CanvasRenderingContext2D): void {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = skin.paper;
     for (let i = 0; i < MAX_FLOATS; i++) {
       const a = this.fAge[i];
       if (a < 0) continue;
       const st = floatTextState(a);
+      const pop = a < 0.12 ? 1.5 - (a / 0.12) * 0.5 : 1;
+      const px = Math.round(this.fSize[i] * pop);
       const y = this.fy[i] - 14 - st.rise;
-      ctx.globalAlpha = st.alpha;
+      ctx.font = font(px);
+      ctx.globalAlpha = st.alpha * 0.55;
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = this.fColor[i];
       ctx.strokeText(this.fText[i], this.fx[i], y);
-      ctx.fillStyle = this.fColor[i];
+      ctx.globalAlpha = st.alpha;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = C.ink;
+      ctx.strokeText(this.fText[i], this.fx[i], y);
+      ctx.fillStyle = C.white;
       ctx.fillText(this.fText[i], this.fx[i], y);
     }
     ctx.globalAlpha = 1;
   }
 
+  /** Overdrive / slow-mo: speed streaks over the playfield. */
   drawSpeed(ctx: CanvasRenderingContext2D, time: number): void {
     if (this.speedT <= 0) return;
     const f = this.speedT / SPEED_LIFE;
     const up = this.speedDir > 0;
-    ctx.strokeStyle = up ? '#2b2b2b' : '#5b8fd0';
-    ctx.lineWidth = up ? 1.6 : 2;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = up ? C.red : C.cyan;
+    ctx.lineWidth = up ? 2 : 3;
     ctx.lineCap = 'round';
-    ctx.globalAlpha = 0.2 * Math.min(1, f * 2);
+    ctx.globalAlpha = 0.35 * Math.min(1, f * 2);
     ctx.beginPath();
-    const len = up ? 90 : 26;
-    const spd = up ? 1500 : 260;
-    for (let i = 0; i < 12; i++) {
+    const len = up ? 110 : 30;
+    const spd = up ? 1800 : 220;
+    for (let i = 0; i < 14; i++) {
       const x = ((i * 0.618034 + 0.07) % 1) * (W - 40) + 20;
       const y = (((time * spd + i * 211) % (H + len)) + H + len) % (H + len) - len;
       ctx.moveTo(x, y);
-      ctx.lineTo(x + (up ? 0 : Math.sin(i + time * 6) * 4), y + len);
+      ctx.lineTo(x, y + len);
     }
     ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
   }
 }

@@ -2,34 +2,6 @@ import { CONFIG, EFFECT_NAMES, POWER_CATEGORY, type EffectName, type PowerCatego
 
 /** Pure helpers for the power-up visuals (no canvas), so they can be unit tested in Node. */
 
-/** Engine power type -> manifest icon id. null = no art, draw procedurally. */
-export const ICON_IDS: Record<PowerType, string | null> = {
-  photocopy: 'icon-photocopy',
-  crumpled: 'icon-crumpled',
-  plane: 'icon-paper-plane',
-  highlighter: 'icon-highlighter',
-  correction: 'icon-correction-tape',
-  ruler: 'icon-ruler',
-  gluestick: 'icon-glue-stick',
-  stapler: 'icon-stapler',
-  eraser: 'icon-eraser',
-  goldstar: 'icon-gold-star',
-  paperclip: 'icon-paperclip',
-  stickynote: 'icon-sticky-note',
-  sharpener: 'icon-sharpener',
-  scissors: 'icon-scissors',
-  redpen: 'icon-red-pen',
-};
-
-export type IconSource = 'art' | 'arrows' | 'doodle';
-
-/** Which drawing to use for a power: art if the id exists, else the procedural doodle (see powerGlyphs.ts). */
-export function resolveIcon(type: string, hasArt: (id: string) => boolean): { source: IconSource; id: string | null } {
-  const id = (ICON_IDS as Record<string, string | null>)[type] ?? null;
-  if (id && hasArt(id)) return { source: 'art', id };
-  return { source: 'doodle', id: null };
-}
-
 export const BAD_POWERS: ReadonlySet<string> = new Set(['sharpener', 'scissors', 'redpen']);
 export const isBadPower = (type: string): boolean => BAD_POWERS.has(type);
 
@@ -47,39 +19,41 @@ export function categoryColor(type: string): string {
 }
 
 /** Highlighter trail colour behind a ball for the active ball effects. */
-export const TRAIL_COLORS = { highlighter: '#39FF14', crumpled: '#8A8D93', plane: '#00E5FF', redpen: '#FF3B5C', none: '#FFE600' } as const;
+export const TRAIL_COLORS = { highlighter: '#39FF14', crumpled: '#FF7A1A', plane: '#00E5FF', redpen: '#FF3B5C', none: '#7FD8FF' } as const;
 
+/** Light-trail colour behind a ball for the active ball effect (Meteor wins, then Overdrive, Splash, Homing). */
 export function trailColor(eff: Partial<Record<string, number>>): { color: string; alpha: number } {
-  if (eff.highlighter !== undefined) return { color: TRAIL_COLORS.highlighter, alpha: 0.42 };
-  if (eff.redpen !== undefined) return { color: TRAIL_COLORS.redpen, alpha: 0.42 };
-  if (eff.plane !== undefined) return { color: TRAIL_COLORS.plane, alpha: 0.42 };
-  if (eff.crumpled !== undefined) return { color: TRAIL_COLORS.crumpled, alpha: 0.35 };
-  return { color: TRAIL_COLORS.none, alpha: 0.28 };
+  if (eff.crumpled !== undefined) return { color: TRAIL_COLORS.crumpled, alpha: 0.75 };
+  if (eff.redpen !== undefined) return { color: TRAIL_COLORS.redpen, alpha: 0.7 };
+  if (eff.highlighter !== undefined) return { color: TRAIL_COLORS.highlighter, alpha: 0.65 };
+  if (eff.plane !== undefined) return { color: TRAIL_COLORS.plane, alpha: 0.65 };
+  return { color: TRAIL_COLORS.none, alpha: 0.5 };
 }
 
+/** Display names (neon re-theme). Engine ids stay the stationery ones from SPEC.md. */
 export const POWER_NAMES: Record<PowerType, string> = {
-  photocopy: 'Photocopy!',
-  crumpled: 'Crumpled!',
-  plane: 'Paper plane!',
-  highlighter: 'Highlighter!',
-  correction: 'Correction tape',
-  ruler: 'Ruler!',
-  gluestick: 'Glue stick!',
-  stapler: 'Stapler!',
-  eraser: 'Eraser!',
-  goldstar: 'Gold star!',
-  paperclip: 'Paperclip!',
-  stickynote: 'Sticky note!',
-  sharpener: 'Sharpened!',
-  scissors: 'Snip!',
-  redpen: 'Red pen!',
+  photocopy: 'TRIPLE BALL',
+  crumpled: 'METEOR',
+  plane: 'HOMING',
+  highlighter: 'SPLASH',
+  correction: 'SLOW-MO',
+  ruler: 'WIDE',
+  gluestick: 'STICKY',
+  stapler: 'LASERS',
+  eraser: 'WIPE',
+  goldstar: '1-UP',
+  paperclip: 'MAGNET',
+  stickynote: 'SHIELD',
+  sharpener: 'SHRINK',
+  scissors: 'SPLIT',
+  redpen: 'OVERDRIVE ×2',
 };
 
-export const powerName = (type: string): string => (POWER_NAMES as Record<string, string>)[type] ?? 'Power!';
+export const powerName = (type: string): string => (POWER_NAMES as Record<string, string>)[type] ?? 'POWER!';
 export const powerLetter = (type: string): string => (type[0] ?? '?').toUpperCase();
 
-export const FLOAT_LIFE = 0.8;
-export const FLOAT_RISE = 46;
+export const FLOAT_LIFE = 0.9;
+export const FLOAT_RISE = 54;
 
 /** Floating text state at `age` seconds: alpha 1 -> 0 (fading over the last 60%), rising with ease-out. */
 export function floatTextState(age: number, life = FLOAT_LIFE): { alpha: number; rise: number; done: boolean } {
@@ -146,7 +120,10 @@ export function snapshotBalls(balls: readonly XY[], buf: XY[]): XY[] {
 export const comboLabel = (value: number): string => `×${Number.isInteger(value) ? value : value.toFixed(1)}`;
 
 /** HUD combo text ("×2.0 COMBO"); empty at 1x so the HUD hides it. */
-export const comboHudText = (mul: number): string => (mul > 1 ? `×${mul.toFixed(1)} COMBO` : '');
+export const comboHudText = (mul: number): string => (mul > 1 ? `×${Number.isInteger(mul) ? mul : mul.toFixed(1)} COMBO` : '');
+
+/** Combo tier 0..3 for a multiplier (1, 1.5, 2, 3). */
+export const comboTier = (mul: number): number => (mul >= 3 ? 3 : mul >= 2 ? 2 : mul > 1 ? 1 : 0);
 
 /** Visual brick tilt (radians) of a loose metal clip, shaking slightly; 0 while it is still firmly fixed. */
 export function clipTilt(streakHits: number, time: number, id: number): number {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyFades, normalizePeak, peak, pickVariant, processSample, trimSilence } from '../src/audio/dsp';
-import { panFromX, soundsForEvents } from '../src/audio/events';
+import { SFX, SONGS, noteHz, parseBar, renderSfx, renderSong, songSeconds } from '../src/audio/synth';
+import { breakPitch, comboPitch, panFromX, soundsForEvents } from '../src/audio/events';
 import { SOUND_IDS } from '../src/audio/sound';
 import { PlayLimiter } from '../src/audio/limiter';
 import { parseSettings } from '../src/input/settings';
@@ -9,62 +9,6 @@ import type { GameEvent } from '../src/engine';
 const ev = (type: GameEvent['type'], extra: Partial<GameEvent> = {}): GameEvent => ({ type, x: 100, y: 100, ...extra });
 const ids = (e: GameEvent[], bricks: { id: number; type: string }[] = []) =>
   soundsForEvents(e, { bricks: bricks as never }).map((c) => c.id);
-
-describe('dsp', () => {
-  it('trims leading and trailing silence', () => {
-    const a = new Float32Array(100);
-    a[40] = 0.5;
-    a[59] = -0.5;
-    a[10] = 0.001; // below -45 dB (0.0056)
-    const [t] = trimSilence([a]);
-    expect(t.length).toBe(20);
-    expect(t[0]).toBe(0.5);
-  });
-  it('keeps an all-silent clip', () => {
-    expect(trimSilence([new Float32Array(10)])[0].length).toBe(10);
-  });
-  it('normalizes the peak to -1 dBFS', () => {
-    const a = Float32Array.from([0.1, -0.2, 0.05]);
-    normalizePeak([a], -1);
-    expect(peak([a])).toBeCloseTo(Math.pow(10, -1 / 20), 5);
-    const z = new Float32Array(3);
-    normalizePeak([z]);
-    expect(peak([z])).toBe(0);
-  });
-  it('fades the first and last 5 ms', () => {
-    const a = new Float32Array(1000).fill(1);
-    applyFades([a], 1000, 5);
-    expect(a[0]).toBe(0);
-    expect(a[999]).toBe(0);
-    expect(a[2]).toBeCloseTo(0.4);
-    expect(a[500]).toBe(1);
-  });
-  it('processSample runs the whole chain', () => {
-    const a = new Float32Array(48000);
-    a.fill(0.2, 10000, 20000);
-    const [o] = processSample([a], 48000);
-    expect(o.length).toBe(10000);
-    expect(peak([o])).toBeLessThanOrEqual(1);
-    expect(peak([o])).toBeGreaterThan(0.85);
-  });
-});
-
-describe('pickVariant', () => {
-  it('never repeats the last variant when n > 1', () => {
-    for (const n of [2, 3, 4]) {
-      for (let last = 0; last < n; last++) {
-        for (const r of [0, 0.25, 0.5, 0.75, 0.999]) {
-          const v = pickVariant(n, last, () => r);
-          expect(v).not.toBe(last);
-          expect(v).toBeGreaterThanOrEqual(0);
-          expect(v).toBeLessThan(n);
-        }
-      }
-    }
-    expect(pickVariant(1, 0)).toBe(0);
-    expect(pickVariant(3, -1, () => 0.999)).toBe(2);
-  });
-});
 
 describe('PlayLimiter', () => {
   it('enforces per-id spacing', () => {
@@ -131,11 +75,59 @@ describe('soundsForEvents', () => {
   });
 });
 
-describe('new sound ids', () => {
-  it('are all registered for the synth fallback', () => {
-    for (const id of ['staple', 'cliploose', 'clippop', 'snip', 'splash', 'paperclip', 'goldstar', 'redpen', 'combo']) {
-      expect(SOUND_IDS as readonly string[]).toContain(id);
+describe('synth', () => {
+  it('has a recipe for every sound id, and renders each to a short, non-silent, unclipped clip', () => {
+    for (const id of SOUND_IDS) {
+      expect(SFX[id], id).toBeDefined();
+      const buf = renderSfx(SFX[id].tones, 22050, SFX[id].fx);
+      let peak = 0;
+      for (const v of buf) peak = Math.max(peak, Math.abs(v));
+      expect(peak, id).toBeGreaterThan(0.5);
+      expect(peak, id).toBeLessThanOrEqual(1);
+      expect(buf.length / 22050, id).toBeLessThan(2.5);
     }
+  });
+  it('is deterministic', () => {
+    const a = renderSfx(SFX.explode.tones, 8000, SFX.explode.fx);
+    const b = renderSfx(SFX.explode.tones, 8000, SFX.explode.fx);
+    expect(a).toEqual(b);
+  });
+  it('parses notes and bars', () => {
+    expect(noteHz('A4')).toBeCloseTo(440);
+    expect(noteHz('C5')).toBeCloseTo(523.25, 1);
+    expect(noteHz('F#5')).toBeCloseTo(739.99, 1);
+    expect(parseBar('E5:4 R:4 G5:8')).toEqual([['E5', 4], [null, 4], ['G5', 8]]);
+    expect(() => parseBar('E5:4')).toThrow();
+  });
+  it('every song bar fills 16 sixteenths and lead/chords line up', () => {
+    for (const s of SONGS) {
+      expect(s.lead.length).toBe(s.chords.length);
+      for (const bar of s.lead) expect(() => parseBar(bar)).not.toThrow();
+    }
+  });
+  it('renders a seamless stereo loop of the song length', () => {
+    const s = SONGS[1];
+    const [l, r] = renderSong(s, 4000);
+    expect(l.length).toBe(Math.round(songSeconds(s) * 4000));
+    expect(r.length).toBe(l.length);
+    let peak = 0;
+    for (const v of l) peak = Math.max(peak, Math.abs(v));
+    expect(peak).toBeGreaterThan(0.3);
+    expect(peak).toBeLessThanOrEqual(0.86);
+  });
+});
+
+describe('musical pitch', () => {
+  it('climbs a pentatonic ladder with the rally and caps', () => {
+    expect(breakPitch(1)).toBe(1);
+    expect(breakPitch(4)).toBeCloseTo(Math.pow(2, 7 / 12));
+    expect(breakPitch(99)).toBeCloseTo(4);
+    expect(breakPitch(0)).toBe(1);
+    const p = soundsForEvents([ev('brickBreak', { brickId: 1 })], { bricks: [], combo: 6 });
+    expect(p[0].pitch).toBeCloseTo(2);
+    expect(comboPitch(1.5)).toBe(1);
+    expect(comboPitch(3)).toBeGreaterThan(comboPitch(2));
+    expect(soundsForEvents([ev('combo', { value: 3 })])[0].pitch).toBeCloseTo(comboPitch(3));
   });
 });
 
@@ -149,5 +141,9 @@ describe('sound settings', () => {
     expect(s.volume).toBe(0.3);
     expect(parseSettings('{"muted":"x","volume":9}', false)).toMatchObject({ muted: false, volume: 1 });
     expect(parseSettings('{"volume":"loud"}', false).volume).toBeCloseTo(0.8);
+    expect(d).toMatchObject({ music: true, musicVolume: 0.5, reducedFx: false, haptics: true });
+    expect(parseSettings('{"music":false,"musicVolume":2,"reducedFx":true,"haptics":0}', false)).toMatchObject({
+      music: false, musicVolume: 1, reducedFx: true, haptics: true,
+    });
   });
 });

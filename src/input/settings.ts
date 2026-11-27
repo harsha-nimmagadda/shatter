@@ -15,6 +15,14 @@ export interface ControlSettings {
   muted: boolean;
   /** Master volume 0..1. */
   volume: number;
+  /** Background music on/off. */
+  music: boolean;
+  /** Music volume 0..1 (under the master volume). */
+  musicVolume: number;
+  /** Reduced effects: fewer particles, no flashes, still background. */
+  reducedFx: boolean;
+  /** Vibration on hits (phones that support it). */
+  haptics: boolean;
 }
 
 export const CONTROLS_KEY = 'shatter.controls';
@@ -22,7 +30,7 @@ export const CONTROLS_KEY = 'shatter.controls';
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function defaultSettings(touch: boolean): ControlSettings {
-  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true, muted: false, volume: 0.8 };
+  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, haptics: true };
 }
 
 /** Pure: parses stored JSON, falling back to defaults per field. */
@@ -48,6 +56,10 @@ export function parseSettings(raw: string | null, touch: boolean): ControlSettin
     shake: typeof r.shake === 'boolean' ? r.shake : d.shake,
     muted: typeof r.muted === 'boolean' ? r.muted : d.muted,
     volume: num(r.volume, 0, 1, d.volume),
+    music: typeof r.music === 'boolean' ? r.music : d.music,
+    musicVolume: num(r.musicVolume, 0, 1, d.musicVolume),
+    reducedFx: typeof r.reducedFx === 'boolean' ? r.reducedFx : d.reducedFx,
+    haptics: typeof r.haptics === 'boolean' ? r.haptics : d.haptics,
   };
 }
 

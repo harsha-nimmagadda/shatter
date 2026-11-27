@@ -1,10 +1,10 @@
-import { processSample, pickVariant } from './dsp';
 import { PlayLimiter } from './limiter';
+import { SFX, SONGS, renderSfx, renderSong, songSeconds } from './synth';
 
 export interface PlayOpts {
   /** 0..1 multiplier on the per-id base volume. */
   volume?: number;
-  /** playbackRate; default is 1 +/- 4% jitter. */
+  /** playbackRate; default is 1 +/- 3% jitter. */
   pitch?: number;
   /** -1..1; use panFromX for positions. */
   pan?: number;
@@ -18,67 +18,114 @@ export const SOUND_IDS = [
 
 /** Bounces are quieter than breaks. */
 export const BASE_VOLUME: Record<string, number> = {
-  wall: 0.35, brick: 0.45, paddle: 0.6, break: 0.8, steel: 0.55, explode: 1, launch: 0.5, powerup: 0.8,
-  powerdown: 0.8, laser: 0.45, eraser: 0.7, lifelost: 1, won: 1, gameover: 1, regen: 0.5, reveal: 0.5,
-  net: 0.7, click: 0.5, shred: 0.5,
-  staple: 0.5, cliploose: 0.5, clippop: 0.7, snip: 0.8, splash: 0.6, paperclip: 0.7, goldstar: 0.9, redpen: 0.8,
-  combo: 0.6,
+  wall: 0.3, brick: 0.4, paddle: 0.55, break: 0.6, steel: 0.45, explode: 0.9, launch: 0.45, powerup: 0.7,
+  powerdown: 0.7, laser: 0.4, eraser: 0.6, lifelost: 0.85, won: 0.8, gameover: 0.8, regen: 0.4, reveal: 0.45,
+  net: 0.6, click: 0.35, shred: 0.4,
+  staple: 0.22, cliploose: 0.45, clippop: 0.6, snip: 0.65, splash: 0.5, paperclip: 0.6, goldstar: 0.8, redpen: 0.7,
+  combo: 0.55,
 };
 
-/** Synth building blocks writing into a destination node (the per-voice gain/pan chain). */
-interface Synth {
-  tone(t: number, freq: number, dur: number, type: OscillatorType, gain: number, freqEnd?: number): void;
-  noise(t: number, dur: number, freq: number, gain: number, q?: number): void;
+const SFX_RATE = 44100;
+const MUSIC_RATE = 32000;
+/** Music sits well under the effects. */
+const MUSIC_LEVEL = 0.45;
+
+interface SynthResult {
+  sfx: Record<string, Float32Array>;
+  songs: [Float32Array, Float32Array][];
 }
 
-/** Fallback recipes (TriLine-style tone/noise), used when no sample is loaded for an id. */
-const RECIPES: Record<string, { dur: number; run: (s: Synth) => void }> = {
-  paddle: { dur: 0.15, run: (s) => { s.tone(0, 200, 0.12, 'sine', 0.9, 80); s.noise(0, 0.03, 1500, 0.3, 2); } },
-  wall: { dur: 0.07, run: (s) => { s.tone(0, 700, 0.05, 'triangle', 0.5, 450); s.noise(0, 0.02, 3000, 0.2, 2); } },
-  brick: { dur: 0.09, run: (s) => { s.tone(0, 420, 0.07, 'triangle', 0.6, 300); s.noise(0, 0.03, 2200, 0.25, 2); } },
-  break: { dur: 0.22, run: (s) => { s.noise(0, 0.2, 2600, 0.7, 0.7); s.tone(0, 300, 0.1, 'triangle', 0.3, 120); } },
-  steel: { dur: 0.25, run: (s) => { s.tone(0, 1800, 0.22, 'sine', 0.5); s.tone(0, 2700, 0.15, 'sine', 0.25); } },
-  explode: { dur: 0.45, run: (s) => { s.noise(0, 0.4, 500, 1, 0.6); s.tone(0, 120, 0.35, 'sine', 0.9, 40); } },
-  launch: { dur: 0.2, run: (s) => { s.noise(0, 0.18, 1400, 0.4, 0.8); s.tone(0, 300, 0.15, 'sine', 0.2, 700); } },
-  powerup: { dur: 0.35, run: (s) => { s.tone(0, 523.25, 0.18, 'triangle', 0.5); s.tone(0.09, 783.99, 0.25, 'triangle', 0.5); } },
-  powerdown: { dur: 0.4, run: (s) => { s.tone(0, 330, 0.18, 'square', 0.18, 220); s.tone(0.1, 196, 0.3, 'sine', 0.6, 110); } },
-  laser: { dur: 0.15, run: (s) => { s.tone(0, 1400, 0.12, 'sawtooth', 0.15, 300); s.noise(0, 0.08, 3500, 0.15, 1.5); } },
-  eraser: { dur: 0.45, run: (s) => { s.noise(0, 0.4, 1100, 0.45, 0.6); } },
-  lifelost: { dur: 0.6, run: (s) => { s.tone(0, 220, 0.5, 'sine', 0.7, 60); s.noise(0, 0.3, 700, 0.4, 0.8); } },
-  won: { dur: 0.7, run: (s) => { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => s.tone(i * 0.13, f, 0.4, 'triangle', 0.45)); } },
-  gameover: { dur: 0.85, run: (s) => { [392, 349.23, 311.13, 261.63].forEach((f, i) => s.tone(i * 0.16, f, 0.45, 'sine', 0.5)); } },
-  regen: { dur: 0.3, run: (s) => { s.noise(0, 0.12, 2500, 0.25, 1.5); s.noise(0.14, 0.12, 2800, 0.25, 1.5); } },
-  reveal: { dur: 0.25, run: (s) => { s.noise(0, 0.22, 1800, 0.35, 0.7); } },
-  net: { dur: 0.2, run: (s) => { s.noise(0, 0.18, 1200, 0.3, 1); s.tone(0, 500, 0.12, 'sine', 0.3, 800); } },
-  click: { dur: 0.05, run: (s) => { s.tone(0, 1200, 0.03, 'square', 0.25, 800); s.noise(0, 0.015, 3000, 0.2, 2); } },
-  shred: { dur: 0.12, run: (s) => { s.noise(0, 0.1, 3200, 0.4, 0.8); } },
-  staple: { dur: 0.08, run: (s) => { s.tone(0, 1800, 0.05, 'square', 0.2, 900); s.noise(0, 0.02, 4500, 0.3, 2); } },
-  cliploose: { dur: 0.18, run: (s) => { s.tone(0, 1500, 0.04, 'triangle', 0.3, 1100); s.tone(0.07, 1300, 0.04, 'triangle', 0.3, 1000); s.noise(0.1, 0.04, 3000, 0.15, 2); } },
-  clippop: { dur: 0.25, run: (s) => { s.tone(0, 600, 0.1, 'sine', 0.7, 1500); s.noise(0, 0.05, 3500, 0.35, 1.5); s.tone(0.1, 2200, 0.1, 'triangle', 0.25, 800); } },
-  snip: { dur: 0.16, run: (s) => { s.noise(0, 0.03, 5000, 0.5, 3); s.tone(0, 2400, 0.04, 'sawtooth', 0.15, 1800); s.noise(0.07, 0.04, 5200, 0.5, 3); } },
-  splash: { dur: 0.25, run: (s) => { s.noise(0, 0.22, 1600, 0.4, 0.6); s.tone(0, 500, 0.15, 'sine', 0.25, 250); } },
-  paperclip: { dur: 0.3, run: (s) => { s.tone(0, 1800, 0.1, 'sine', 0.35); s.tone(0.08, 2400, 0.18, 'sine', 0.3); s.noise(0, 0.03, 4000, 0.2, 2); } },
-  goldstar: { dur: 0.5, run: (s) => { [783.99, 1046.5, 1318.5, 1568].forEach((f, i) => s.tone(i * 0.07, f, 0.3, 'triangle', 0.4)); } },
-  redpen: { dur: 0.3, run: (s) => { s.tone(0, 700, 0.25, 'sawtooth', 0.2, 1400); s.noise(0, 0.12, 2500, 0.25, 1); } },
-  combo: { dur: 0.2, run: (s) => { s.tone(0, 660, 0.08, 'triangle', 0.4); s.tone(0.07, 990, 0.12, 'triangle', 0.4); } },
-};
-
-type Manifest = Record<string, string[]>;
-
+/**
+ * All audio is synthesized on the device (see synth.ts): rendered in a worker at page load, turned into
+ * AudioBuffers on the first tap (which also unlocks iOS audio). Music is a looping chiptune track on its own
+ * gain under the master volume.
+ */
 export class SoundManager {
   muted: boolean;
   volume: number;
+  musicOn: boolean;
+  musicVolume: number;
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private buffers = new Map<string, AudioBuffer[]>();
-  private raw = new Map<string, ArrayBuffer[]>();
-  private lastVariant = new Map<string, number>();
-  private limiter = new PlayLimiter(() => performance.now(), 35, 12);
+  private musicGain: GainNode | null = null;
+  private buffers = new Map<string, AudioBuffer>();
+  private songBufs: AudioBuffer[] = [];
+  private raw: SynthResult = { sfx: {}, songs: [] };
+  private limiter = new PlayLimiter(() => performance.now(), 35, 14);
   private suspended = false;
+  private song = 0;
+  private songSrc: AudioBufferSourceNode | null = null;
+  private songStart = 0;
+  private wantMusic = false;
+  private duck = 1;
 
-  constructor(init: { muted?: boolean; volume?: number } = {}) {
+  constructor(init: { muted?: boolean; volume?: number; music?: boolean; musicVolume?: number } = {}) {
     this.muted = init.muted ?? false;
     this.volume = clamp01(init.volume ?? 0.8);
+    this.musicOn = init.music ?? true;
+    this.musicVolume = clamp01(init.musicVolume ?? 0.5);
+    this.synthesize();
+  }
+
+  /** Starts rendering every sound (worker if available, else main thread in small slices). */
+  private synthesize(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const w = new Worker(new URL('./synthWorker.ts', import.meta.url), { type: 'module' });
+      w.onmessage = (e: MessageEvent) => {
+        const d = e.data as { kind: string; sfx?: Record<string, Float32Array>; index?: number; l?: Float32Array; r?: Float32Array };
+        if (d.kind === 'sfx' && d.sfx) this.raw.sfx = d.sfx;
+        else if (d.kind === 'song' && d.l && d.r && d.index !== undefined) this.raw.songs[d.index] = [d.l, d.r];
+        if (d.kind === 'song' && d.index === SONGS.length - 1) w.terminate();
+        this.adopt();
+      };
+      w.onerror = () => {
+        w.terminate();
+        this.synthesizeInline();
+      };
+      w.postMessage({ sfxRate: SFX_RATE, musicRate: MUSIC_RATE });
+    } catch {
+      this.synthesizeInline();
+    }
+  }
+
+  private synthesizeInline(): void {
+    const ids = Object.keys(SFX);
+    let i = 0;
+    const tick = (): void => {
+      if (i < ids.length) {
+        for (let k = 0; k < 6 && i < ids.length; k++, i++) this.raw.sfx[ids[i]] = renderSfx(SFX[ids[i]].tones, SFX_RATE, SFX[ids[i]].fx);
+      } else {
+        const s = i - ids.length;
+        if (s >= SONGS.length) return;
+        this.raw.songs[s] = renderSong(SONGS[s], MUSIC_RATE);
+        i++;
+      }
+      this.adopt();
+      setTimeout(tick, 0);
+    };
+    setTimeout(tick, 0);
+  }
+
+  /** Copies rendered data into AudioBuffers once a context exists. */
+  private adopt(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    for (const id of Object.keys(this.raw.sfx)) {
+      const data = this.raw.sfx[id];
+      const b = ctx.createBuffer(1, data.length, SFX_RATE);
+      b.copyToChannel(data as Float32Array<ArrayBuffer>, 0);
+      this.buffers.set(id, b);
+    }
+    this.raw.sfx = {};
+    this.raw.songs.forEach((pair, i) => {
+      if (!pair || this.songBufs[i]) return;
+      const b = ctx.createBuffer(2, pair[0].length, MUSIC_RATE);
+      b.copyToChannel(pair[0] as Float32Array<ArrayBuffer>, 0);
+      b.copyToChannel(pair[1] as Float32Array<ArrayBuffer>, 1);
+      this.songBufs[i] = b;
+    });
+    if (this.wantMusic && !this.songSrc) this.startSong();
   }
 
   setMuted(m: boolean): void {
@@ -91,8 +138,22 @@ export class SoundManager {
     this.applyGain();
   }
 
+  setMusic(on: boolean): void {
+    this.musicOn = on;
+    this.applyGain();
+  }
+
+  setMusicVolume(v: number): void {
+    this.musicVolume = clamp01(v);
+    this.applyGain();
+  }
+
   private applyGain(): void {
-    if (this.master) this.master.gain.value = this.muted ? 0 : this.volume * 0.8;
+    if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
+    if (this.musicGain && this.ctx) {
+      const g = this.musicOn ? this.musicVolume * MUSIC_LEVEL * this.duck : 0;
+      this.musicGain.gain.setTargetAtTime(g, this.ctx.currentTime, 0.08);
+    }
   }
 
   private ensure(): AudioContext | null {
@@ -103,8 +164,15 @@ export class SoundManager {
           (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!Ctor) return null;
         this.ctx = new Ctor();
+        const comp = this.ctx.createDynamicsCompressor();
+        comp.threshold.value = -10;
+        comp.ratio.value = 4;
+        comp.connect(this.ctx.destination);
         this.master = this.ctx.createGain();
-        this.master.connect(this.ctx.destination);
+        this.master.connect(comp);
+        this.musicGain = this.ctx.createGain();
+        this.musicGain.gain.value = 0;
+        this.musicGain.connect(this.master);
         this.applyGain();
       } catch {
         return null;
@@ -127,7 +195,7 @@ export class SoundManager {
     } catch {
       /* ignore */
     }
-    void this.decodePending();
+    this.adopt();
   }
 
   /** Suspend/resume with the game (pause overlay, hidden tab). */
@@ -141,93 +209,75 @@ export class SoundManager {
     if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume().catch(() => undefined);
   }
 
-  /** Fetches manifest.json and the files it lists. Never throws; anything missing means synth fallback. */
-  async load(base = './assets/sfx/'): Promise<void> {
-    try {
-      const res = await fetch(base + 'manifest.json');
-      if (!res.ok) return;
-      const manifest = (await res.json()) as Manifest;
-      if (!manifest || typeof manifest !== 'object') return;
-      await Promise.all(
-        Object.entries(manifest).map(async ([id, files]) => {
-          if (!Array.isArray(files)) return;
-          const got: ArrayBuffer[] = [];
-          for (const f of files) {
-            if (typeof f !== 'string') continue;
-            try {
-              const r = await fetch(base + f);
-              if (r.ok) got.push(await r.arrayBuffer());
-            } catch {
-              /* missing file: skip */
-            }
-          }
-          if (got.length) this.raw.set(id, got);
-        }),
-      );
-      // Decoding needs a context; if none exists yet (no tap so far) unlock() decodes later.
-      if (this.ctx) await this.decodePending();
-    } catch {
-      /* no samples: synth fallback */
-    }
-  }
-
-  private async decodePending(): Promise<void> {
-    const ctx = this.ctx;
-    if (!ctx || this.raw.size === 0) return;
-    const pending = [...this.raw.entries()];
-    this.raw.clear();
-    await Promise.all(
-      pending.map(async ([id, datas]) => {
-        const out: AudioBuffer[] = [];
-        for (const d of datas) {
-          try {
-            out.push(this.process(ctx, await decode(ctx, d)));
-          } catch {
-            /* undecodable: skip */
-          }
-        }
-        if (out.length) this.buffers.set(id, out);
-      }),
-    );
-  }
-
-  private process(ctx: AudioContext, buf: AudioBuffer): AudioBuffer {
-    const chs: Float32Array[] = [];
-    for (let c = 0; c < buf.numberOfChannels; c++) chs.push(buf.getChannelData(c).slice());
-    const out = processSample(chs, buf.sampleRate);
-    const len = Math.max(1, out[0]?.length ?? 1);
-    const nb = ctx.createBuffer(out.length || 1, len, buf.sampleRate);
-    out.forEach((ch, c) => nb.copyToChannel(ch as Float32Array<ArrayBuffer>, c));
-    return nb;
-  }
-
   hasSample(id: string): boolean {
-    return (this.buffers.get(id)?.length ?? 0) > 0;
+    return this.buffers.has(id);
+  }
+
+  /** Starts (or switches to) background track `index` (wraps). */
+  playMusic(index = this.song): void {
+    this.song = ((index % SONGS.length) + SONGS.length) % SONGS.length;
+    this.wantMusic = true;
+    this.stopSong();
+    this.startSong();
+  }
+
+  /** Next track (called on every new game). */
+  nextTrack(): void {
+    this.playMusic(this.song + 1);
+  }
+
+  /** Lowers the music (end screens) or restores it. */
+  duckMusic(on: boolean): void {
+    this.duck = on ? 0.35 : 1;
+    this.applyGain();
+  }
+
+  private startSong(): void {
+    const ctx = this.ctx;
+    const buf = this.songBufs[this.song];
+    if (!ctx || !buf || !this.musicGain) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(this.musicGain);
+    this.songStart = ctx.currentTime + 0.05;
+    src.start(this.songStart);
+    this.songSrc = src;
+  }
+
+  private stopSong(): void {
+    if (!this.songSrc) return;
+    try {
+      this.songSrc.stop();
+    } catch {
+      /* already stopped */
+    }
+    this.songSrc.disconnect();
+    this.songSrc = null;
+  }
+
+  /** Visual beat pulse 0..1 (1 on each beat, decaying), 0 when no music is audible. */
+  beat(): number {
+    const ctx = this.ctx;
+    if (!ctx || !this.songSrc || !this.musicOn || this.muted || this.musicVolume <= 0 || ctx.state !== 'running') return 0;
+    const s = SONGS[this.song];
+    const t = ctx.currentTime - this.songStart;
+    if (t < 0) return 0;
+    const ph = ((t % songSeconds(s)) * s.bpm) / 60;
+    const f = ph - Math.floor(ph);
+    return (1 - f) * (1 - f) * (1 - f);
   }
 
   play(id: string, opts: PlayOpts = {}): void {
     if (this.muted || this.volume <= 0 || this.suspended) return;
     const ctx = this.ctx;
     if (!ctx || !this.master || ctx.state !== 'running') return;
-    const variants = this.buffers.get(id);
-    const recipe = RECIPES[id];
-    if (!variants?.length && !recipe) return;
-    const pitch = opts.pitch ?? 1 + (Math.random() * 2 - 1) * 0.04;
-    let buf: AudioBuffer | null = null;
-    let durMs = (recipe?.dur ?? 0.3) * 1000;
-    if (variants?.length) {
-      const i = pickVariant(variants.length, this.lastVariant.get(id) ?? -1);
-      buf = variants[i];
-      durMs = (buf.duration / pitch) * 1000;
-      if (!this.limiter.tryStart(id, durMs)) return;
-      this.lastVariant.set(id, i);
-    } else if (!this.limiter.tryStart(id, durMs)) {
-      return;
-    }
-
-    const t0 = ctx.currentTime + 0.003;
+    const buf = this.buffers.get(id);
+    if (!buf) return;
+    const pitch = opts.pitch ?? 1 + (Math.random() * 2 - 1) * 0.03;
+    if (!this.limiter.tryStart(id, (buf.duration / pitch) * 1000)) return;
     const g = ctx.createGain();
-    g.gain.value = (BASE_VOLUME[id] ?? 0.7) * (opts.volume ?? 1);
+    g.gain.value = (BASE_VOLUME[id] ?? 0.6) * (opts.volume ?? 1);
     let tail: AudioNode = g;
     if (typeof ctx.createStereoPanner === 'function' && opts.pan !== undefined && opts.pan !== 0) {
       const p = ctx.createStereoPanner();
@@ -236,64 +286,14 @@ export class SoundManager {
       tail = p;
     }
     tail.connect(this.master);
-
-    if (buf) {
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.playbackRate.value = pitch;
-      src.connect(g);
-      src.start(t0);
-    } else if (recipe) {
-      recipe.run(makeSynth(ctx, g, t0, pitch));
-    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = pitch;
+    src.connect(g);
+    src.start(ctx.currentTime + 0.002);
   }
 }
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
-}
-
-function decode(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
-  // Callback form for older Safari, promise form elsewhere.
-  return new Promise((resolve, reject) => {
-    const p = ctx.decodeAudioData(data, resolve, reject);
-    if (p && typeof p.then === 'function') p.then(resolve, reject);
-  });
-}
-
-function makeSynth(ctx: AudioContext, dest: AudioNode, t0: number, pitch: number): Synth {
-  return {
-    tone(t, freq, dur, type, gain, freqEnd) {
-      const s = t0 + t;
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq * pitch, s);
-      if (freqEnd !== undefined) osc.frequency.exponentialRampToValueAtTime(freqEnd * pitch, s + dur);
-      g.gain.setValueAtTime(0.0001, s);
-      g.gain.exponentialRampToValueAtTime(gain, s + 0.008);
-      g.gain.exponentialRampToValueAtTime(0.0001, s + dur);
-      osc.connect(g).connect(dest);
-      osc.start(s);
-      osc.stop(s + dur + 0.02);
-    },
-    noise(t, dur, freq, gain, q = 1) {
-      const s = t0 + t;
-      const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
-      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.value = freq;
-      filter.Q.value = q;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(gain, s);
-      g.gain.exponentialRampToValueAtTime(0.0001, s + dur);
-      src.connect(filter).connect(g).connect(dest);
-      src.start(s);
-    },
-  };
 }

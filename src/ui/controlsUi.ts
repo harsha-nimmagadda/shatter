@@ -1,6 +1,7 @@
-import { enterImmersive } from '../game/fullscreen';
+import { enterFullscreen, exitFullscreen, isFullscreen, isFullscreenSupported, onFullscreenChange } from '../game/fullscreen';
 import type { Controls } from '../input/controls';
-import { saveSettings } from '../input/settings';
+import type { ControlSettings } from '../input/settings';
+import { hasSavedSettings, hasTouch, saveSettings } from '../input/settings';
 import type { SoundManager } from '../audio/sound';
 import type { Nav } from './nav';
 
@@ -40,6 +41,15 @@ function el<K extends keyof HTMLElementTagNameMap>(
   if (text !== undefined) e.textContent = text;
   return e;
 }
+
+const svg = (inner: string, size = 26): string =>
+  `<svg viewBox="0 0 32 32" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+const PAUSE_ICON = svg('<path d="M11 7v18M21 7v18"/>');
+const EXPAND_ICON = svg('<path d="M5 12V5h7M27 12V5h-7M5 20v7h7M27 20v7h-7"/>', 24);
+const COLLAPSE_ICON = svg('<path d="M12 5v7H5M20 5v7h7M12 27v-7H5M20 27v-7h7"/>', 24);
+const TILT_ICON = svg('<rect x="10" y="4" width="12" height="24" rx="3" transform="rotate(-20 16 16)"/><path d="M4 14a14 14 0 0 1 4-7M28 18a14 14 0 0 1-4 7"/>', 30);
+const DRAG_ICON = svg('<path d="M4 16h24M9 11l-5 5 5 5M23 11l5 5-5 5"/>', 30);
+const STICK_ICON = svg('<circle cx="16" cy="16" r="11"/><circle cx="16" cy="16" r="4" fill="currentColor"/>', 30);
 
 export function createControlsUi(root: HTMLElement, controls: Controls, sound?: SoundManager, hooks?: UiHooks, nav?: Nav): ControlsUi {
   const s = controls.settings;
@@ -100,7 +110,48 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   startBtn.dataset.primary = '1';
   const levelsBtn = el('button', 'ui-btn mid', 'LEVELS');
   const tip = el('p', 'ui-tip', 'Catch the falling power-ups. Red spiky ones are trouble!');
-  start.append(logo, tag, startBtn, levelsBtn, tip);
+  const settingsBtn = el('button', 'ui-btn small', 'SETTINGS');
+  const titleFs = el('button', 'ui-btn ui-icon-btn');
+  const titleRow = el('div', 'ui-title-row');
+  titleRow.append(settingsBtn, titleFs);
+  start.append(logo, tag, startBtn, levelsBtn, titleRow, tip);
+  // First launch on a touch device: ask how to steer. Resolves with the picked mode (saved).
+  const askControls = (): Promise<void> =>
+    new Promise((resolve) => {
+      const ov = el('div', 'ui-overlay ui-cardov');
+      const card = el('div', 'ui-card ui-choose');
+      card.append(el('h2', 'ui-card-title', 'How do you want to steer?'));
+      const opts: [ControlSettings['mode'], string, string, string][] = [
+        ['tilt', 'TILT', 'Tilt your phone', TILT_ICON],
+        ['drag', 'DRAG', 'Slide a finger anywhere', DRAG_ICON],
+        ['stick', 'STICK', 'On-screen thumbstick', STICK_ICON],
+      ];
+      for (const [mode, name, desc, icon] of opts) {
+        const b = el('button', 'ui-choice');
+        const ic = el('span', 'ic');
+        ic.innerHTML = icon;
+        const tx = el('span', 'tx');
+        tx.append(el('b', undefined, name), el('i', undefined, desc));
+        b.append(ic, tx);
+        if (mode === 'tilt') b.dataset.primary = '1';
+        b.addEventListener('click', async () => {
+          // The tilt permission request must run straight from this tap (iOS).
+          s.mode = mode;
+          if (mode === 'tilt' && !(await tryTilt())) tiltFailed = true;
+          saveSettings(s);
+          ov.remove();
+          resolve();
+        });
+        card.append(b);
+      }
+      card.append(el('p', 'ui-note', 'You can change this later in Settings.'));
+      ov.append(card);
+      nav?.register(ov);
+      root.appendChild(ov);
+      nav?.focusInitial(ov);
+    });
+  let tiltFailed = false;
+
   const choose = async (act: (() => void) | undefined): Promise<void> => {
     startBtn.disabled = true;
     levelsBtn.disabled = true;
@@ -108,17 +159,25 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     if (!started) {
       sound?.unlock();
       sound?.playMusic(0);
-      void enterImmersive();
-      hint = 'Drag anywhere to move · tap to launch';
-      if (s.mode === 'tilt') {
-        hint = (await tryTilt()) ? 'Tilt to move · tap to launch' : 'Tilt not available here, drag to move';
-      }
+      void enterFullscreen();
+      const asked = hasTouch() && !hasSavedSettings();
+      if (asked) await askControls();
+      if (s.mode === 'tilt' && !asked) tiltFailed = !(await tryTilt());
+      hint =
+        tiltFailed
+          ? 'Tilt not available here, drag to move'
+          : s.mode === 'tilt'
+            ? 'Tilt to move · tap to launch'
+            : s.mode === 'stick'
+              ? 'Use the stick on the left to move · tap the right side to launch'
+              : 'Drag anywhere to move · tap to launch';
     }
     start.remove();
     titleOpen = false;
     started = true;
     startBtn.disabled = false;
     levelsBtn.disabled = false;
+    syncHud();
     controls.clearFire();
     if (hint) showHint(hint);
     act?.();
@@ -129,18 +188,43 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   nav?.register(start);
   nav?.focusInitial(start);
 
+  // ---- Fullscreen controls (all hidden where the API does not exist, e.g. iPhone Safari) ----
+  const fsOK = isFullscreenSupported();
+  const fsItems: { btn: HTMLElement; label: boolean }[] = [];
+  const fsButton = (btn: HTMLElement, label: boolean): void => {
+    btn.addEventListener('click', () => void (isFullscreen() ? exitFullscreen() : enterFullscreen()));
+    fsItems.push({ btn, label });
+    if (!fsOK) btn.hidden = true;
+  };
+  const syncFs = (): void => {
+    const on = isFullscreen();
+    for (const { btn, label } of fsItems) {
+      if (label) btn.textContent = on ? 'EXIT FULLSCREEN' : 'FULLSCREEN';
+      else btn.innerHTML = on ? COLLAPSE_ICON : EXPAND_ICON;
+      btn.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Fullscreen');
+    }
+  };
+  onFullscreenChange(syncFs);
+  fsButton(titleFs, false);
+
   // ---- Pause overlay ----
-  const pauseOv = el('div', 'ui-overlay');
+  const pauseOv = el('div', 'ui-overlay ui-pauseov');
   pauseOv.append(el('h1', 'ui-h', 'PAUSED'));
   const resumeBtn = el('button', 'ui-btn big', 'RESUME');
   resumeBtn.dataset.primary = '1';
-  pauseOv.append(resumeBtn);
+  const pauseSettings = el('button', 'ui-btn mid', 'SETTINGS');
+  pauseOv.append(resumeBtn, pauseSettings);
   if (hooks) {
     const pauseLevels = el('button', 'ui-btn mid', 'LEVELS');
     pauseLevels.addEventListener('click', () => hooks.onPauseLevels());
     pauseOv.append(pauseLevels);
   }
+  const pauseFs = el('button', 'ui-btn mid');
+  fsButton(pauseFs, true);
+  const quitBtn = el('button', 'ui-btn mid', 'QUIT TO TITLE');
+  pauseOv.append(pauseFs, quitBtn);
   nav?.register(pauseOv);
+  syncFs();
   const hidePause = (): void => {
     if (!pauseShown) return;
     pauseShown = false;
@@ -157,16 +241,23 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   };
   resumeBtn.addEventListener('click', hidePause);
 
-  // ---- Settings panel ----
-  const gear = el('button', 'ui-btn ui-gear');
-  gear.innerHTML =
-    '<svg viewBox="0 0 32 32" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<circle cx="16" cy="16" r="4.2"/>' +
-    '<path d="M16 3.5v4M16 24.5v4M3.5 16h4M24.5 16h4M7.2 7.2l2.8 2.8M22 22l2.8 2.8M7.2 24.8l2.8-2.8M22 10l2.8-2.8"/>' +
-    '<circle cx="16" cy="16" r="9"/></svg>';
-  gear.setAttribute('aria-label', 'Settings');
-  root.appendChild(gear);
+  // ---- HUD buttons: fullscreen (optional) and pause ----
+  const hudFs = el('button', 'ui-btn ui-hud-btn ui-fs');
+  fsButton(hudFs, false);
+  syncFs();
+  const pauseBtn = el('button', 'ui-btn ui-hud-btn ui-pause');
+  pauseBtn.innerHTML = PAUSE_ICON;
+  pauseBtn.setAttribute('aria-label', 'Pause');
+  pauseBtn.addEventListener('click', showPause);
+  root.prepend(hudFs, pauseBtn);
+  const syncHud = (): void => {
+    const show = started && !titleOpen && !external;
+    pauseBtn.style.display = show ? '' : 'none';
+    hudFs.style.display = show ? '' : 'none';
+  };
+  syncHud();
 
+  // ---- Settings panel ----
   const panelOv = el('div', 'ui-overlay');
   const panel = el('div', 'ui-panel');
   panel.append(el('h2', undefined, 'SETTINGS'));
@@ -176,7 +267,8 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   const seg = el('div', 'ui-seg');
   const tiltBtn = el('button', 'ui-btn', 'TILT');
   const dragBtn = el('button', 'ui-btn', 'DRAG');
-  seg.append(tiltBtn, dragBtn);
+  const stickBtn = el('button', 'ui-btn', 'STICK');
+  seg.append(tiltBtn, dragBtn, stickBtn);
   modeRow.append(seg);
   const msg = el('div', 'ui-msg');
 
@@ -281,20 +373,29 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   volume.input.addEventListener('change', () => sound?.play('powerup'));
   const recal = el('button', 'ui-btn', 'Recalibrate');
   const dragSens = slider('Drag sensitivity', 0.5, 3, 0.1, () => s.dragSensitivity, (v) => (s.dragSensitivity = v));
+  const stickSpeed = slider('Stick speed', 0.6, 1.6, 0.05, () => s.stickSpeed, (v) => (s.stickSpeed = v));
   const closeBtn = el('button', 'ui-btn', 'DONE');
 
   const refresh = (): void => {
     tiltBtn.classList.toggle('on', s.mode === 'tilt');
     dragBtn.classList.toggle('on', s.mode === 'drag');
+    stickBtn.classList.toggle('on', s.mode === 'stick');
     const tilt = s.mode === 'tilt';
     tiltSens.row.style.display = tilt ? '' : 'none';
     invertRow.style.display = tilt ? '' : 'none';
     recal.style.display = tilt ? '' : 'none';
-    dragSens.row.style.display = tilt ? 'none' : '';
+    dragSens.row.style.display = s.mode === 'drag' ? '' : 'none';
+    stickSpeed.row.style.display = s.mode === 'stick' ? '' : 'none';
   };
 
   dragBtn.addEventListener('click', () => {
     s.mode = 'drag';
+    msg.textContent = '';
+    saveSettings(s);
+    refresh();
+  });
+  stickBtn.addEventListener('click', () => {
+    s.mode = 'stick';
     msg.textContent = '';
     saveSettings(s);
     refresh();
@@ -327,28 +428,37 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   });
 
   panel.append(
-    modeRow, tiltSens.row, invertRow, recal, dragSens.row,
+    modeRow, tiltSens.row, invertRow, recal, dragSens.row, stickSpeed.row,
     soundRow, volume.row, musicRow, musicVol.row,
     shakeRow, fxRow, gfxRow, hapticsRow, msg, closeBtn,
   );
   panelOv.append(panel);
 
   const openSettings = (): void => {
-    if (settingsOpen || !started) return;
-    hidePause();
+    if (settingsOpen) return;
+    // From the pause overlay: hide it but keep the game paused (audio stays suspended); closing returns to it.
+    if (pauseShown) pauseOv.remove();
     settingsOpen = true;
     msg.textContent = '';
     refresh();
     root.appendChild(panelOv);
+    nav?.focusInitial(panelOv);
   };
   const closeSettings = (): void => {
     if (!settingsOpen) return;
     settingsOpen = false;
     panelOv.remove();
     controls.clearFire();
+    if (pauseShown) {
+      root.appendChild(pauseOv);
+      nav?.focusInitial(pauseOv);
+    } else if (titleOpen) nav?.focusInitial(start);
   };
-  gear.addEventListener('click', openSettings);
+  nav?.register(panelOv, closeSettings);
+  pauseSettings.addEventListener('click', openSettings);
+  settingsBtn.addEventListener('click', openSettings);
   closeBtn.addEventListener('click', closeSettings);
+  quitBtn.addEventListener('click', () => api.showTitle());
 
   // ---- Auto pause on focus loss ----
   const onLost = (): void => showPause();
@@ -358,7 +468,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     syncAudio();
   });
 
-  return {
+  const api: ControlsUi = {
     started: () => started,
     paused: () => settingsOpen || pauseShown || titleOpen || external,
     togglePause: () => {
@@ -371,12 +481,16 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
       if (titleOpen) return;
       hidePause();
       titleOpen = true;
+      syncHud();
       root.appendChild(start);
       nav?.focusInitial(start);
     },
     closePause: hidePause,
     setExternalModal: (open) => {
+      if (open === external) return;
       external = open;
+      syncHud();
     },
   };
+  return api;
 }

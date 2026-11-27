@@ -1,11 +1,13 @@
 import { readStore, writeStore } from '../ui/storage';
 
 export interface ControlSettings {
-  mode: 'tilt' | 'drag';
+  mode: 'tilt' | 'drag' | 'stick';
   /** 1..10 */
   tiltSensitivity: number;
   /** 0.5..3 */
   dragSensitivity: number;
+  /** Stick speed multiplier 0.6..1.6 (1 = full deflection crosses the playfield in ~0.55 s). */
+  stickSpeed: number;
   /** Degrees. */
   tiltNeutral: number;
   invertTilt: boolean;
@@ -32,7 +34,7 @@ export const CONTROLS_KEY = 'shatter.controls';
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function defaultSettings(touch: boolean): ControlSettings {
-  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, haptics: true, graphics: 'auto' };
+  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, stickSpeed: 1, tiltNeutral: 0, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, haptics: true, graphics: 'auto' };
 }
 
 /** Pure: parses stored JSON, falling back to defaults per field. */
@@ -50,9 +52,10 @@ export function parseSettings(raw: string | null, touch: boolean): ControlSettin
   const num = (v: unknown, lo: number, hi: number, def: number): number =>
     typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : def;
   return {
-    mode: r.mode === 'tilt' || r.mode === 'drag' ? r.mode : d.mode,
+    mode: r.mode === 'tilt' || r.mode === 'drag' || r.mode === 'stick' ? r.mode : d.mode,
     tiltSensitivity: num(r.tiltSensitivity, 1, 10, d.tiltSensitivity),
     dragSensitivity: num(r.dragSensitivity, 0.5, 3, d.dragSensitivity),
+    stickSpeed: num(r.stickSpeed, 0.6, 1.6, d.stickSpeed),
     tiltNeutral: num(r.tiltNeutral, -180, 180, d.tiltNeutral),
     invertTilt: typeof r.invertTilt === 'boolean' ? r.invertTilt : d.invertTilt,
     shake: typeof r.shake === 'boolean' ? r.shake : d.shake,
@@ -72,6 +75,11 @@ export function hasTouch(): boolean {
   } catch {
     return false;
   }
+}
+
+/** True when nothing has been saved yet (the very first launch). */
+export function hasSavedSettings(): boolean {
+  return readStore(CONTROLS_KEY) !== null;
 }
 
 export function loadSettings(): ControlSettings {

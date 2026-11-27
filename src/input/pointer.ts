@@ -38,6 +38,8 @@ export class PointerInput {
   readonly fire = new Latch();
   /** When false, touches never steer (tilt mode). Set by Controls. */
   touchSteers = true;
+  /** When false, touch pointers are ignored entirely (stick mode owns them). Mouse still works. */
+  touchEnabled = true;
   /** Supplies the current paddle x (for relative drag). */
   getPaddleX: () => number = () => 270;
   getSensitivity: () => number = () => 1.5;
@@ -68,6 +70,7 @@ export class PointerInput {
 
   private down(e: PointerEvent): void {
     if (this.fromUi(e)) return;
+    if (e.pointerType !== 'mouse' && !this.touchEnabled) return;
     if (e.pointerType === 'mouse') {
       this.target = this.view.toLogical(e.clientX, e.clientY).x;
       this.fire.press();

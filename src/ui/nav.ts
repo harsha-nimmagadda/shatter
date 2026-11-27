@@ -44,7 +44,9 @@ export class Nav {
   }
 
   private items(t: HTMLElement): HTMLElement[] {
-    return Array.from(t.querySelectorAll<HTMLElement>('button:not(:disabled)'));
+    return Array.from(t.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')).filter(
+      (i) => !i.hidden && (i.offsetWidth > 0 || i.offsetHeight > 0),
+    );
   }
 
   /** Focus the overlay's primary button (data-primary) or its first button. */
@@ -100,7 +102,7 @@ export class Nav {
     const t = this.top();
     if (!t) return;
     const a = document.activeElement as HTMLElement | null;
-    if (a && t.contains(a) && a.tagName === 'BUTTON') a.click();
+    if (a && t.contains(a) && (a.tagName === 'BUTTON' || (a as HTMLInputElement).type === 'checkbox')) a.click();
     else this.focusInitial(t);
   }
 
@@ -115,6 +117,9 @@ export class Nav {
 
   private readonly onKey = (e: KeyboardEvent): void => {
     if (!this.top()) return;
+    // Sliders keep Left/Right for changing their value.
+    const tg = e.target as HTMLInputElement | null;
+    if (tg?.type === 'range' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
     switch (e.key) {
       case 'ArrowLeft': this.setKeys(true); this.move(-1, 0); break;
       case 'ArrowRight': this.setKeys(true); this.move(1, 0); break;

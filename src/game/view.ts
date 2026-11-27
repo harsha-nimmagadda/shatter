@@ -52,6 +52,11 @@ export class View {
     this.resize();
   }
 
+  /** CSS pixels per logical unit. */
+  get cssScale(): number {
+    return this.fit.scale;
+  }
+
   /** Device pixels per logical unit (dpr * fit scale). */
   get pixelScale(): number {
     return this.dpr * this.fit.scale;

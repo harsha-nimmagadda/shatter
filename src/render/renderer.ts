@@ -86,6 +86,8 @@ export class Renderer {
   beat = 0;
   /** False while a DOM menu covers the game (hides the canvas status sign). */
   showStatus = true;
+  /** Extra logical px kept clear at the top right (fullscreen HUD button). */
+  hudRightInset = 0;
   /** HUD level label such as 'LV 4' (empty hides it). */
   levelLabel = '';
   private readonly cache = new SpriteCache(600);
@@ -901,10 +903,10 @@ export class Renderer {
       ctx.fillText(this.levelLabel, 262, 22);
       ctx.textAlign = 'left';
     }
-    // Lives as neon hearts, clear of the DOM gear button at the top right.
+    // Lives as neon hearts, clear of the DOM pause (and fullscreen) buttons at the top right.
     const kf = this.key(Ns.Misc, 'heart');
     const heart = this.cache.get(kf) ?? this.cache.build(kf, HEART, HEART, 6, (g, px) => renderHeart(g, HEART, px));
-    const right = W - 70;
+    const right = W - 70 - this.hudRightInset;
     const lives = world.lives;
     if (lives <= 6) {
       for (let i = 0; i < lives; i++) {
@@ -950,7 +952,7 @@ export class Renderer {
         this.comboSpriteScale = this.pixelScale;
       }
       ctx.save();
-      ctx.translate(W - 66, 49);
+      ctx.translate(W - 66, this.hudRightInset > 0 ? 62 : 49);
       ctx.scale(pop, pop);
       this.comboSprite.draw(ctx, -190, -20);
       ctx.restore();

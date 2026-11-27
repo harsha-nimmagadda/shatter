@@ -13,6 +13,8 @@ import { loadProgress, recordWin, saveProgress } from './game/progress';
 import { clearRun, continueRun, loadRun, retryLevel, saveRun, startRun, winLevel, type RunState, type WinOutcome } from './game/run';
 import { QUALITY_DPR, QualityGovernor, effectiveQuality } from './game/quality';
 import { introHint, takeFirstRun } from './game/hints';
+import { isFullscreenSupported } from './game/fullscreen';
+import { WakeLock, shouldHoldWakeLock } from './game/wakeLock';
 import { SoundManager } from './audio/sound';
 import { panFromX, soundsForEvents } from './audio/events';
 
@@ -27,6 +29,7 @@ const sound = new SoundManager({ muted: st.muted, volume: st.volume, music: st.m
 const uiRoot = document.getElementById('ui') as HTMLElement;
 const nav = new Nav(uiRoot);
 let lastFrame = performance.now();
+const wakeLock = new WakeLock();
 
 // Debug URL params: ?level=<explosive|moving|regen|hidden|mixed>, ?power=<type>, ?drop=<0..1>, ?auto
 const params = new URLSearchParams(location.search);
@@ -52,6 +55,8 @@ const mkWorld = (level: Level, o: { lives?: number; score?: number; levelIndex?:
 let world = mkWorld(debugLevel);
 const renderer = new Renderer();
 renderer.loadLevel(world);
+// Make room for the fullscreen HUD button next to the pause button.
+renderer.hudRightInset = isFullscreenSupported() ? 52 : 0;
 /** Ball positions before the last step, for render interpolation. */
 const prev: XY[] = snapshotBalls(world.balls, []);
 
@@ -291,6 +296,8 @@ function render(alpha: number): void {
   } else if (pausePressed) ui.togglePause();
   ui.setExternalModal(menus.open());
   if (ui.paused()) controls.clearFire();
+  wakeLock.update(shouldHoldWakeLock({ started: ui.started(), paused: ui.paused(), hidden: document.visibilityState === 'hidden', status: world.status }));
+  controls.setStickGhost(ui.started() && !ui.paused() && world.status === 'serve');
   const c = ctx as CanvasRenderingContext2D;
   if (view.pixelScale <= 0) return; // canvas not laid out yet
   view.begin(c);

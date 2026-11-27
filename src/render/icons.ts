@@ -1,6 +1,6 @@
 import type { PowerType } from '../engine';
 import { C, rgba, shade } from './palette';
-import { categoryColor, isBadPower } from './powerVisuals';
+import { capsuleShape, categoryColor, type CapsuleShape } from './powerVisuals';
 
 /**
  * Neon power-up icons. Every icon is drawn in a unit box centred on (0, 0) with radius ~1 (the caller scales),
@@ -307,31 +307,52 @@ function sawPath(g: CanvasRenderingContext2D, r: number, teeth: number): void {
   g.beginPath();
   for (let k = 0; k < teeth * 2; k++) {
     const a = (k / (teeth * 2)) * Math.PI * 2 - Math.PI / 2;
-    const rr = k % 2 === 0 ? r : r * 0.84;
+    const rr = k % 2 === 0 ? r : r * 0.74;
     if (k === 0) g.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
     else g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
   }
   g.closePath();
 }
 
+/** Outline path of a capsule badge, centred on (0, 0), for the given shape. */
+export function capsulePath(g: CanvasRenderingContext2D, shape: CapsuleShape, r: number): void {
+  switch (shape) {
+    case 'saw':
+      sawPath(g, r * 1.0, 9);
+      break;
+    case 'square':
+      roundRect(g, -r * 0.8, -r * 0.8, r * 1.6, r * 1.6, r * 0.34);
+      break;
+    case 'hexagon': {
+      g.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2 - Math.PI / 2;
+        if (k === 0) g.moveTo(Math.cos(a) * r * 0.98, Math.sin(a) * r * 0.98);
+        else g.lineTo(Math.cos(a) * r * 0.98, Math.sin(a) * r * 0.98);
+      }
+      g.closePath();
+      break;
+    }
+    default:
+      g.beginPath();
+      g.arc(0, 0, r * 0.9, 0, Math.PI * 2);
+  }
+}
+
 /**
- * Falling capsule badge of `size` (content box 0..size): dark glass disc with a neon ring in the category
- * colour, a gloss highlight and the white icon. Hazards get a saw-tooth ring so they read by shape too.
+ * Falling capsule badge of `size` (content box 0..size): dark glass body with a neon ring in the category
+ * colour, a gloss highlight and the white icon. The outline differs per category (circle, rounded square,
+ * hexagon, saw) so it reads without colour.
  */
 export function renderCapsule(g: CanvasRenderingContext2D, type: PowerType, size: number, px: number): void {
   const col = categoryColor(type);
-  const bad = isBadPower(type);
   const r = size / 2;
   g.save();
   g.translate(r, r);
   // Outer glow + ring.
   g.shadowColor = col;
   g.shadowBlur = 9 * px;
-  if (bad) sawPath(g, r * 0.98, 10);
-  else {
-    g.beginPath();
-    g.arc(0, 0, r * 0.9, 0, Math.PI * 2);
-  }
+  capsulePath(g, capsuleShape(type), r);
   const fill = g.createRadialGradient(0, -r * 0.3, r * 0.1, 0, 0, r);
   fill.addColorStop(0, shade(col, -0.35));
   fill.addColorStop(1, shade(col, -0.82));

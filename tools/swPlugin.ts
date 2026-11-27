@@ -3,12 +3,18 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Plugin } from 'vite';
 
+/**
+ * iOS startup images (public/splash/) are only ever fetched by iOS itself when the app is added to the Home Screen
+ * (one of 17 sizes, ~3.7 MB in total), so they are not worth precaching on every device.
+ */
+export const isStartupImage = (p: string): boolean => p.startsWith('splash/');
+
 /** Pure: the URLs to precache (relative to the SW scope) for a list of emitted file paths. */
 export function precacheList(files: readonly string[]): string[] {
   const out = new Set<string>(['./']);
   for (const f of files) {
     const p = f.replace(/\\/g, '/').replace(/^\.?\//, '');
-    if (p === '' || p === 'sw.js' || p.endsWith('.map')) continue;
+    if (p === '' || p === 'sw.js' || p.endsWith('.map') || isStartupImage(p)) continue;
     out.add(`./${p}`);
   }
   return [...out].sort();

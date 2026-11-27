@@ -22,6 +22,13 @@ import { tallyRows } from './game/tally';
 import { pickTip } from './game/tips';
 import { isFullscreenSupported } from './game/fullscreen';
 import { computeHudLayout, readSafeInsets } from './game/hud';
+import { Installer, dismissIosHint, iosHintNow } from './game/install';
+import { SLOWMO, BRICK_CALLOUT, Taught, pendingBrickCallouts, slowMoScale, teachingAllowed } from './game/teaching';
+import { resetProgressData } from './game/reset';
+import { defaultProgress } from './game/progress';
+import { isBadPower } from './render/powerVisuals';
+import { dismissCallout, showCallout } from './ui/callout';
+import { removeStore } from './ui/storage';
 import { WakeLock, shouldHoldWakeLock } from './game/wakeLock';
 import { SoundManager } from './audio/sound';
 import { panFromX, soundsForEvents } from './audio/events';
@@ -39,7 +46,12 @@ const nav = new Nav(uiRoot);
 const fx = new UiFx(sound, st);
 installUiFeedback(uiRoot, fx);
 enablePressStates();
-setReduceMotion(st.reducedFx);
+setReduceMotion(st.reduceMotion);
+const installer = new Installer();
+const taught = new Taught();
+/** Real seconds of first-hazard slow-motion left. */
+let slowLeft = 0;
+let hazardPending = !taught.has('hazard');
 nav.onBack = () => fx.play('back');
 let lastFrame = performance.now();
 const wakeLock = new WakeLock();
@@ -120,6 +132,8 @@ const toTitle = (): void => {
 function resetFor(w: World): void {
   inGame = true;
   countdown.cancel();
+  slowLeft = 0;
+  dismissCallout(true);
   renderer.showHud = true;
   world = w;
   renderer.loadLevel(world);
@@ -141,9 +155,24 @@ function startLevel(r: RunState): void {
   const lv = CAMPAIGN[r.levelIndex];
   resetFor(mkWorld(lv, { lives: r.startLives, score: r.startScore, levelIndex: r.levelIndex, ...(lv.featured ? { featured: lv.featured } : {}) }));
   renderer.levelLabel = `LV ${r.levelIndex + 1}`;
+  renderer.starGoals = lv.stars;
+  renderer.levelBase = r.startScore;
   saveRun(r);
   const first = r.levelIndex === 0 && takeFirstRun();
   menus.showIntro(r.levelIndex + 1, lv.name, introHint(lv.hint, first, st.mode), first ? 3200 : 1600);
+  void teachBricks(world, levelsStarted);
+}
+
+/** First time a special brick type shows up in a level: one short callout at a time under the level intro. */
+async function teachBricks(w: World, token: number): Promise<void> {
+  if (!teachingAllowed(st.tips, performance.now())) return;
+  const list = pendingBrickCallouts(new Set(w.bricks.map((b) => b.type)), taught.all);
+  for (const t of list) {
+    await new Promise((r) => window.setTimeout(r, 350));
+    if (token !== levelsStarted || !inGame || !teachingAllowed(st.tips, performance.now())) return;
+    taught.mark(`brick:${t}`);
+    await showCallout(uiRoot, BRICK_CALLOUT[t]);
+  }
 }
 
 function startTest(): void {
@@ -151,6 +180,8 @@ function startTest(): void {
   inTest = true;
   resetFor(mkWorld(debugLevel));
   renderer.levelLabel = '';
+  renderer.starGoals = null;
+  renderer.levelBase = 0;
 }
 
 const governor = new QualityGovernor();
@@ -235,6 +266,15 @@ const ui = createControlsUi(
       // Closing the pause menu mid-rally: 3-2-1 before the ball moves again (a serve resumes at once).
       if (inGame && needsCountdown(world.status) && !menus.introActive()) countdown.start();
     },
+    install: installer,
+    iosHint: () => iosHintNow(progress.unlocked > 0 || progress.stars.some((x) => x > 0)),
+    onIosHintDismiss: dismissIosHint,
+    onResetProgress: () => {
+      resetProgressData(removeStore);
+      progress = defaultProgress();
+      taught.reload();
+      hazardPending = true;
+    },
     onLevels: () => showLevelSelect(toTitle),
     onPauseLevels: () => showLevelSelect(() => menus.close()),
   },
@@ -304,7 +344,8 @@ function showEndCard(): void {
 }
 
 let introWas = false;
-let reduceSynced = st.reducedFx;
+let reduceSynced = st.reduceMotion;
+let fxSynced = st.reducedFx;
 let musicScene: 'menu' | 'game' = 'menu';
 /** One fixed step of the title-screen demo (frozen while Reduce motion is on). */
 function updateAttract(dt: number): void {
@@ -367,7 +408,19 @@ function update(dt: number): void {
       inp.fire = inp.fire || Math.floor(world.time * 4) !== Math.floor((world.time - dt) * 4);
     }
   }
-  step(world, inp, dt);
+  const scale = slowMoScale(slowLeft);
+  if (slowLeft > 0) slowLeft -= dt;
+  step(world, inp, dt * scale);
+  if (hazardPending && run && st.tips && world.drops.length > 0 && teachingAllowed(true, performance.now())) {
+    for (let i = 0; i < world.drops.length; i++) {
+      if (!isBadPower(world.drops[i].type)) continue;
+      hazardPending = false;
+      taught.mark('hazard');
+      renderer.startHazardCallout(world.drops[i].id);
+      if (!motionOff()) slowLeft = SLOWMO.seconds;
+      break;
+    }
+  }
 }
 
 /** Short vibrations for the big moments (Android; iOS Safari has no vibrate and ignores this). */
@@ -389,6 +442,19 @@ function haptics(events: readonly GameEvent[]): void {
     } catch {
       /* not allowed before a gesture */
     }
+  }
+}
+
+/** Fades out the inline boot splash (index.html) once the first frame is on the canvas. */
+let bootEl: HTMLElement | null = document.getElementById('boot');
+function hideBoot(): void {
+  const b = bootEl;
+  if (!b) return;
+  bootEl = null;
+  if (motionOff()) b.remove();
+  else {
+    b.classList.add('done');
+    window.setTimeout(() => b.remove(), 450);
   }
 }
 
@@ -418,9 +484,12 @@ function render(alpha: number): void {
     shownCount = 0;
     countView.hide();
   }
-  if (st.reducedFx !== reduceSynced) {
-    reduceSynced = st.reducedFx;
+  if (st.reduceMotion !== reduceSynced) {
+    reduceSynced = st.reduceMotion;
     setReduceMotion(reduceSynced);
+  }
+  if (st.reducedFx !== fxSynced) {
+    fxSynced = st.reducedFx;
     syncLite();
   }
   // Menus (and the title) get the calm loop; a level in play gets its gameplay track; both crossfade.
@@ -437,11 +506,14 @@ function render(alpha: number): void {
   view.begin(c);
   if (gallery) {
     drawGallery(c, view.pixelScale, now / 1000);
+    hideBoot();
     return;
   }
 
   if (governor.frame(now / 1000) || st.graphics !== appliedGfx) applyQuality();
-  renderer.shake.enabled = st.shake && !st.reducedFx && renderer.quality === 0;
+  renderer.shake.enabled = st.shake && !st.reducedFx && !st.reduceMotion && renderer.quality === 0;
+  renderer.tips = st.tips;
+  renderer.calm = st.reduceMotion;
   renderer.reduced = st.reducedFx;
   renderer.beat = sound.beat();
   renderer.showStatus = ui.started() && !ui.paused();
@@ -458,6 +530,7 @@ function render(alpha: number): void {
   const t0 = performance.now();
   renderer.draw(c, world, prev, alpha, now / 1000);
   renderer.drawMs += (performance.now() - t0 - renderer.drawMs) * 0.05;
+  hideBoot();
 }
 
 if (params.has('fps')) (window as unknown as { __shatter?: unknown }).__shatter = { renderer, get world() { return world; } };

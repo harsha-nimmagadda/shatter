@@ -22,23 +22,11 @@ export const MOTION = {
 const PANEL = ':scope > .ui-card, :scope > .ui-pausecard, :scope > .ui-panel';
 
 let settingOff = false;
-let mq: MediaQueryList | null | undefined;
-
-const prefersReduced = (): boolean => {
-  if (mq === undefined) {
-    try {
-      mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
-    } catch {
-      mq = null;
-    }
-  }
-  return mq?.matches ?? false;
-};
-
 /** Pure: motion is off when either the in-game setting or the OS preference asks for it. */
 export const motionIsOff = (setting: boolean, osPrefers: boolean): boolean => setting || osPrefers;
 
-export const motionOff = (): boolean => motionIsOff(settingOff, prefersReduced());
+/** The setting alone decides (it defaults to the OS preference, so the player can still turn motion back on). */
+export const motionOff = (): boolean => settingOff;
 
 /** Mirrors the Reduce motion / reduced effects setting; also flips `html[data-motion=off]` so CSS can stand still. */
 export function setReduceMotion(on: boolean): void {

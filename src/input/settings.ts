@@ -24,6 +24,10 @@ export interface ControlSettings {
   musicVolume: number;
   /** Reduced effects: fewer particles, no flashes, still background. */
   reducedFx: boolean;
+  /** Reduce motion: no menu animations, wipes, title demo, screen shake or slow-motion. Defaults ON with the OS preference. */
+  reduceMotion: boolean;
+  /** In-game teaching callouts (power-up names, first hazard, new bricks). */
+  tips: boolean;
   /** Vibration on hits (phones that support it). */
   haptics: boolean;
   /** Graphics quality: Auto adapts to the frame rate. */
@@ -34,13 +38,13 @@ export const CONTROLS_KEY = 'shatter.controls';
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
-export function defaultSettings(touch: boolean): ControlSettings {
-  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, stickSpeed: 1, tiltCal: null, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, haptics: true, graphics: 'auto' };
+export function defaultSettings(touch: boolean, osReduceMotion = false): ControlSettings {
+  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, stickSpeed: 1, tiltCal: null, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, reduceMotion: osReduceMotion, tips: true, haptics: true, graphics: 'auto' };
 }
 
 /** Pure: parses stored JSON, falling back to defaults per field. */
-export function parseSettings(raw: string | null, touch: boolean): ControlSettings {
-  const d = defaultSettings(touch);
+export function parseSettings(raw: string | null, touch: boolean, osReduceMotion = false): ControlSettings {
+  const d = defaultSettings(touch, osReduceMotion);
   if (!raw) return d;
   let o: unknown;
   try {
@@ -65,6 +69,8 @@ export function parseSettings(raw: string | null, touch: boolean): ControlSettin
     music: typeof r.music === 'boolean' ? r.music : d.music,
     musicVolume: num(r.musicVolume, 0, 1, d.musicVolume),
     reducedFx: typeof r.reducedFx === 'boolean' ? r.reducedFx : d.reducedFx,
+    reduceMotion: typeof r.reduceMotion === 'boolean' ? r.reduceMotion : d.reduceMotion,
+    tips: typeof r.tips === 'boolean' ? r.tips : d.tips,
     haptics: typeof r.haptics === 'boolean' ? r.haptics : d.haptics,
     graphics: r.graphics === 'auto' || r.graphics === 'high' || r.graphics === 'low' ? r.graphics : d.graphics,
   };
@@ -79,12 +85,20 @@ export function hasTouch(): boolean {
 }
 
 /** True when nothing has been saved yet (the very first launch). */
+export function prefersReducedMotion(): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
 export function hasSavedSettings(): boolean {
   return readStore(CONTROLS_KEY) !== null;
 }
 
 export function loadSettings(): ControlSettings {
-  return parseSettings(readStore(CONTROLS_KEY), hasTouch());
+  return parseSettings(readStore(CONTROLS_KEY), hasTouch(), prefersReducedMotion());
 }
 
 export function saveSettings(s: ControlSettings): void {

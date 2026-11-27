@@ -22,8 +22,8 @@ import {
   type PaddleStyle,
 } from './art';
 import { Background, PlayFrame } from './background';
-import { renderCapsule, renderHudIcon } from './icons';
-import { C, brickHue, font } from './palette';
+import { renderCapsule, renderHudIcon, roundRect } from './icons';
+import { C, brickHue, font, rgba } from './palette';
 import { Particles } from './particles';
 import { PowerFx } from './powerFx';
 import {
@@ -36,13 +36,14 @@ import {
   effectFraction,
   isBadPower,
   lerpTowards,
+  powerEffect,
   powerName,
   trailColor,
   type XY,
 } from './powerVisuals';
 import { Shake } from './shake';
 import { QUALITY_NAMES } from '../game/quality';
-import { DEFAULT_HUD, type HudLayout } from '../game/hud';
+import { DEFAULT_HUD, type HudLayout, type SideLayout } from '../game/hud';
 import { Sprite, SpriteCache } from './sprite';
 
 const W = CONFIG.width;
@@ -54,6 +55,12 @@ const TYPE_IDX = { normal: 0, steel: 1, explosive: 2, moving: 3, regen: 4, hidde
 const TIER_COLORS = [C.white, C.cyan, C.pink, C.gold];
 const FIREWORK = [C.cyan, C.pink, C.yellow, C.green, C.violet, C.orange];
 const HEART = 20;
+const CO_W = 250;
+const CO_H = 52;
+const CO_LIFE = 1.6;
+const HZ_W = 360;
+const HZ_H = 40;
+const HZ_LIFE = 2.8;
 
 const enum Ns {
   Halo,
@@ -64,6 +71,7 @@ const enum Ns {
   Meteor,
   Sign,
   Misc,
+  Callout,
 }
 
 interface BrickInfo {
@@ -93,6 +101,28 @@ export class Renderer {
   hud: HudLayout = DEFAULT_HUD;
   /** HUD level label such as 'LV 4' (empty hides it). */
   levelLabel = '';
+  /** Catch callouts (name + effect) near the paddle; off = the old one-line name float. */
+  tips = true;
+  /** Reduce motion: callouts neither pop nor rise. */
+  calm = false;
+  /** Score at the start of this level (for the star progress in the side panel). */
+  levelBase = 0;
+  private goalTexts: [string, string] | null = null;
+  private goals: readonly [number, number] | null = null;
+  private labelSrc = '';
+  private levelNumText = '';
+  private readonly coKey = ['', ''];
+  private readonly coAge = new Float32Array(2).fill(-1);
+  private readonly coX = new Float32Array(2);
+  private readonly coY = new Float32Array(2);
+  private coCursor = 0;
+  private hazardId = -1;
+  private hazardAge = -1;
+  private hazardX = 0;
+  private hazardY = 0;
+  private sideSprite: Sprite | null = null;
+  private sideA = 0;
+  private sideScale = 0;
   private readonly cache = new SpriteCache(600);
   private readonly bg = new Background();
   private readonly frame = new PlayFrame();
@@ -181,6 +211,18 @@ export class Renderer {
     this.cache.setScale(scale);
   }
 
+  /** Star targets of the current level (score needed for 2 and 3 stars), or null. */
+  set starGoals(g: readonly [number, number] | null) {
+    this.goals = g;
+    this.goalTexts = g ? [g[0].toLocaleString('en-US'), g[1].toLocaleString('en-US')] : null;
+  }
+
+  /** The first hazard capsule: a callout follows it for a couple of seconds. */
+  startHazardCallout(dropId: number): void {
+    this.hazardId = dropId;
+    this.hazardAge = 0;
+  }
+
   /** Rebuilds per-level state. Call on every (re)start. */
   loadLevel(world: World): void {
     this.bricks.clear();
@@ -211,6 +253,8 @@ export class Renderer {
     this.scoreInt = -1;
     this.flashT = 0;
     this.introStart = -1;
+    this.coAge.fill(-1);
+    this.hazardAge = -1;
   }
 
   /** Interned negative numeric sprite keys per namespace + name (no per-frame string building). */
@@ -322,7 +366,10 @@ export class Renderer {
           p.emit('ring', e.x, e.y, 1, { color: col, speed: 300, size: 8, life: 0.4 });
           p.emit('spark', e.x, e.y, 12, { color: col, speed: 360, size: 12 });
           p.emit('dot', e.x, e.y, 8, { color: C.white, speed: 220, life: 0.5 });
-          if (e.power) this.fx.addFloat(powerName(e.power), e.x, e.y - 22, col, bad ? 28 : 26);
+          if (e.power) {
+            if (this.tips && world) this.addCallout(e.power, e.x, world.paddle.y - 64);
+            else this.fx.addFloat(powerName(e.power), e.x, e.y - 22, col, bad ? 28 : 26);
+          }
           if (bad) this.flash(C.red, 0.18, 0.25);
           else this.flash(col, 0.1, 0.18);
           if (e.power === 'redpen') this.fx.addSpeed(1);
@@ -395,6 +442,15 @@ export class Renderer {
     }
   }
 
+  private addCallout(type: string, x: number, y: number): void {
+    const i = this.coCursor;
+    this.coCursor = (i + 1) % 2;
+    this.coKey[i] = type;
+    this.coAge[i] = 0;
+    this.coX[i] = Math.max(CO_W / 2 + 6, Math.min(W - CO_W / 2 - 6, x));
+    this.coY[i] = y;
+  }
+
   private goldBurst(x: number, y: number, plusOne: boolean): void {
     const p = this.particles;
     p.emit('spark', x, y, 14, { color: C.gold, speed: 380, size: 14, life: 0.5 });
@@ -416,6 +472,7 @@ export class Renderer {
     this.energy += (tier / 3 - this.energy) * Math.min(1, dt * 4);
 
     this.bg.draw(ctx, this.pixelScale, time, dt, this.energy, this.lite ? 0 : this.beat, this.lite);
+    this.drawSideArt(ctx);
 
     ctx.translate(this.shake.x, this.shake.y);
     this.frame.draw(ctx, this.pixelScale);
@@ -432,6 +489,7 @@ export class Renderer {
     this.particles.draw(ctx);
     this.fx.drawBlasts(ctx);
     this.fx.drawFloats(ctx);
+    this.drawCallouts(ctx, world, dt);
     ctx.translate(-this.shake.x, -this.shake.y);
 
     if (!this.lite) this.fx.drawSpeed(ctx, time);
@@ -849,6 +907,242 @@ export class Renderer {
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  // ---------- callouts ----------
+
+  /** Power-up catch callouts near the paddle and the first-hazard pointer. Sprites are baked once per power-up. */
+  private drawCallouts(ctx: CanvasRenderingContext2D, world: World, dt: number): void {
+    for (let i = 0; i < 2; i++) {
+      const a = this.coAge[i];
+      if (a < 0) continue;
+      if (a >= CO_LIFE) {
+        this.coAge[i] = -1;
+        continue;
+      }
+      this.coAge[i] = a + dt;
+      const type = this.coKey[i];
+      const k = this.key(Ns.Callout, type);
+      const col = categoryColor(type);
+      const s =
+        this.cache.get(k) ??
+        this.cache.build(k, CO_W, CO_H, 12, (g, px) => {
+          roundRect(g, 0, 0, CO_W, CO_H, 14);
+          g.shadowColor = col;
+          g.shadowBlur = 10 * px;
+          g.fillStyle = 'rgba(10,4,32,0.86)';
+          g.fill();
+          g.shadowBlur = 0;
+          g.lineWidth = 2.5;
+          g.strokeStyle = col;
+          g.stroke();
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.fillStyle = C.white;
+          g.shadowColor = col;
+          g.shadowBlur = 8 * px;
+          g.font = font(23);
+          g.fillText(powerName(type), CO_W / 2, 18);
+          g.shadowBlur = 0;
+          g.font = font(14, false);
+          g.fillStyle = col;
+          g.fillText(powerEffect(type), CO_W / 2, 39);
+        });
+      const t = a / CO_LIFE;
+      const pop = this.calm ? 1 : a < 0.14 ? 0.8 + 0.2 * (a / 0.14) + 0.1 * Math.sin((a / 0.14) * Math.PI) : 1;
+      ctx.globalAlpha = t > 0.7 ? 1 - (t - 0.7) / 0.3 : Math.min(1, a / 0.08);
+      s.drawCentered(ctx, this.coX[i], this.coY[i] - (this.calm ? 0 : 20 * (1 - (1 - t) * (1 - t))), pop);
+    }
+    ctx.globalAlpha = 1;
+    if (this.hazardAge >= 0) {
+      const a = this.hazardAge;
+      this.hazardAge = a + dt;
+      if (a >= HZ_LIFE) {
+        this.hazardAge = -1;
+        return;
+      }
+      for (let i = 0; i < world.drops.length; i++) {
+        if (world.drops[i].id === this.hazardId) {
+          this.hazardX = world.drops[i].x;
+          this.hazardY = world.drops[i].y;
+        }
+      }
+      const k = this.key(Ns.Callout, '_hazard');
+      const s =
+        this.cache.get(k) ??
+        this.cache.build(k, HZ_W, HZ_H, 12, (g, px) => {
+          roundRect(g, 0, 0, HZ_W, HZ_H, 12);
+          g.shadowColor = C.red;
+          g.shadowBlur = 12 * px;
+          g.fillStyle = 'rgba(40,4,16,0.9)';
+          g.fill();
+          g.shadowBlur = 0;
+          g.lineWidth = 2.5;
+          g.strokeStyle = C.red;
+          g.stroke();
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.font = font(18);
+          g.fillStyle = C.white;
+          g.fillText('HAZARD — dodge the red saws!', HZ_W / 2, HZ_H / 2 + 1);
+        });
+      const cx = Math.max(HZ_W / 2 + 6, Math.min(W - HZ_W / 2 - 6, this.hazardX));
+      const cy = Math.max(CONFIG.topWall + 40, this.hazardY - 64);
+      ctx.globalAlpha = a > HZ_LIFE - 0.4 ? (HZ_LIFE - a) / 0.4 : Math.min(1, a / 0.1);
+      s.drawCentered(ctx, cx, cy);
+      // Pointer triangle toward the capsule.
+      const ty = Math.max(cy + HZ_H / 2 + 4, this.hazardY - 28);
+      ctx.fillStyle = C.red;
+      ctx.beginPath();
+      ctx.moveTo(this.hazardX - 9, ty - 8);
+      ctx.lineTo(this.hazardX + 9, ty - 8);
+      ctx.lineTo(this.hazardX, ty + 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---------- side bars (landscape / iPad) ----------
+
+  /** Decorative neon art in the letterbox bars: one cached sprite, mirrored for the right bar. */
+  private drawSideArt(ctx: CanvasRenderingContext2D): void {
+    const bar = this.hud.bar;
+    if (bar < 3) return;
+    const A = Math.round(Math.min(bar, 380));
+    if (this.sideSprite === null || this.sideA !== A || this.sideScale !== this.pixelScale) {
+      this.sideA = A;
+      this.sideScale = this.pixelScale;
+      this.sideSprite = new Sprite(A, H, 0, Math.max(0.25, this.pixelScale), (g, px) => renderSideArt(g, A, px));
+    }
+    this.sideSprite.draw(ctx, -A, 0);
+    ctx.save();
+    ctx.translate(W, 0);
+    ctx.scale(-1, 1);
+    this.sideSprite.draw(ctx, -A, 0);
+    ctx.restore();
+  }
+
+  /** Score / level / star targets (left) and lives / active power-ups (right), in design units scaled by side.k. */
+  private drawSide(ctx: CanvasRenderingContext2D, world: World, side: SideLayout, time: number): void {
+    const k = side.k;
+    const top = this.hud.bottom + 10 * k;
+    if (this.levelLabel !== this.labelSrc) {
+      this.labelSrc = this.levelLabel;
+      this.levelNumText = this.levelLabel.replace(/^LV\s*/, '');
+    }
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    // ----- left: score, level, star targets
+    ctx.save();
+    ctx.translate((side.left.x0 + side.left.x1) / 2, top);
+    ctx.scale(k, k);
+    ctx.font = font(13, false);
+    ctx.fillStyle = C.cyan;
+    ctx.fillText('SCORE', 0, 8);
+    ctx.font = font(38);
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = 'rgba(255,61,203,0.5)';
+    ctx.strokeText(this.scoreText, 0, 42);
+    ctx.fillStyle = C.white;
+    ctx.fillText(this.scoreText, 0, 42);
+    if (this.levelNumText) {
+      ctx.font = font(13, false);
+      ctx.fillStyle = C.yellow;
+      ctx.fillText('LEVEL', 0, 86);
+      ctx.font = font(34);
+      ctx.shadowColor = C.yellow;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = C.yellow;
+      ctx.fillText(this.levelNumText, 0, 118);
+    }
+    if (this.goals && this.goalTexts) {
+      const lvScore = Math.max(0, world.score - this.levelBase);
+      ctx.font = font(13, false);
+      ctx.fillStyle = C.violet;
+      ctx.fillText('STAR TARGETS', 0, 160);
+      const bw = 170;
+      const f = Math.min(1, lvScore / this.goals[1]);
+      ctx.fillStyle = 'rgba(157,107,255,0.25)';
+      ctx.fillRect(-bw / 2, 176, bw, 8);
+      ctx.fillStyle = lvScore >= this.goals[1] ? C.gold : C.pink;
+      ctx.fillRect(-bw / 2, 176, bw * f, 8);
+      ctx.fillStyle = C.white;
+      ctx.fillRect(-bw / 2 + (bw * this.goals[0]) / this.goals[1] - 1, 172, 2, 16);
+      ctx.font = font(18);
+      ctx.fillStyle = lvScore >= this.goals[0] ? C.gold : C.white;
+      ctx.globalAlpha = lvScore >= this.goals[0] ? 1 : 0.75;
+      ctx.fillText(`2★  ${this.goalTexts[0]}`, 0, 208);
+      ctx.fillStyle = lvScore >= this.goals[1] ? C.gold : C.white;
+      ctx.globalAlpha = lvScore >= this.goals[1] ? 1 : 0.75;
+      ctx.fillText(`3★  ${this.goalTexts[1]}`, 0, 234);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    // ----- right: lives, active power-ups
+    ctx.save();
+    ctx.translate((side.right.x0 + side.right.x1) / 2, top);
+    ctx.scale(k, k);
+    ctx.font = font(13, false);
+    ctx.fillStyle = C.pink;
+    ctx.fillText('LIVES', 0, 8);
+    const kf = this.key(Ns.Misc, 'heart');
+    const heart = this.cache.get(kf) ?? this.cache.build(kf, HEART, HEART, 6, (g, px) => renderHeart(g, HEART, px));
+    const lives = world.lives;
+    if (lives <= 6) {
+      for (let i = 0; i < lives; i++) heart.drawCentered(ctx, (i - (lives - 1) / 2) * 28, 40, 1.3 * (i === lives - 1 ? 1 + 0.08 * this.beat : 1));
+    } else {
+      heart.drawCentered(ctx, -22, 40, 1.3);
+      ctx.font = font(26);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = C.white;
+      ctx.fillText(`${lives}×`, -2, 41);
+      ctx.textAlign = 'center';
+    }
+    ctx.font = font(13, false);
+    ctx.fillStyle = C.green;
+    ctx.fillText('POWER-UPS', 0, 86);
+    let row = 0;
+    for (let i = 0; i < EFFECT_NAMES.length; i++) {
+      const name = EFFECT_NAMES[i];
+      const left = world.effects[name];
+      if (left === undefined) continue;
+      const y = 112 + row * 38;
+      row++;
+      this.drawTimerRow(ctx, name, y, effectFraction(name, left), time);
+    }
+    if (world.net) {
+      this.drawTimerRow(ctx, 'stickynote', 112 + row * 38, 1, time);
+      row++;
+    }
+    if (row === 0) {
+      ctx.font = font(13, false);
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = C.white;
+      ctx.fillText('none active', 0, 114);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  private drawTimerRow(ctx: CanvasRenderingContext2D, name: string, y: number, f: number, time: number): void {
+    const k = this.key(Ns.Hud, name);
+    const s = this.cache.get(k) ?? this.cache.build(k, HUD_ICON, HUD_ICON, HUD_PAD, (g, px) => renderHudIcon(g, name as PowerType, HUD_ICON, px));
+    const col = categoryColor(name);
+    const blink = f < 0.25 && Math.floor(time * 6) % 2 === 0;
+    ctx.globalAlpha = blink ? 0.45 : 1;
+    s.drawCentered(ctx, -78, y, 1.15);
+    ctx.textAlign = 'left';
+    ctx.font = font(13);
+    ctx.fillStyle = C.white;
+    ctx.fillText(powerName(name), -58, y - 7);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(-58, y + 6, 130, 5);
+    ctx.fillStyle = col;
+    ctx.fillRect(-58, y + 6, 130 * f, 5);
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = 1;
+  }
+
   // ---------- HUD ----------
 
   private drawHud(ctx: CanvasRenderingContext2D, world: World, time: number, dt: number): void {
@@ -865,6 +1159,8 @@ export class Renderer {
     ctx.textAlign = 'left';
     const hud = this.hud;
     const cy = hud.cy;
+    if (hud.side) this.drawSide(ctx, world, hud.side, time);
+    else {
     ctx.font = font(11, false);
     ctx.fillStyle = C.cyan;
     ctx.fillText('SCORE', hud.scoreX, cy - 12);
@@ -926,6 +1222,7 @@ export class Renderer {
       ctx.fillText(`${lives}×`, right - 28, cy + 1);
       ctx.textAlign = 'left';
     }
+    }
     // Combo (hidden at 1x) under the hearts.
     const mul = comboMultiplier(world);
     if (mul !== this.comboValue) {
@@ -962,7 +1259,7 @@ export class Renderer {
       this.comboSprite.draw(ctx, -190, -20);
       ctx.restore();
     }
-    this.drawEffectsRow(ctx, world, time);
+    if (!hud.side) this.drawEffectsRow(ctx, world, time);
   }
 
   /** Second HUD row: active timed effects as icons with a shrinking ring in the category colour. */
@@ -1042,4 +1339,66 @@ export class Renderer {
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(this.fpsText, 8, H - 8);
   }
+}
+
+/** Neon side art for a letterbox bar of width A (logical units): the playfield edge is the sprite's right edge. */
+function renderSideArt(g: CanvasRenderingContext2D, A: number, px: number): void {
+  const grd = g.createLinearGradient(0, 0, A, 0);
+  grd.addColorStop(0, C.bg0);
+  grd.addColorStop(0.7, '#0B0230');
+  grd.addColorStop(1, '#1D0646');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, A, H);
+  // Rungs: short ticks along the edge, a long one every fifth.
+  g.lineCap = 'round';
+  for (let y = 40, n = 0; y < H; y += 40, n++) {
+    const long = n % 5 === 0;
+    g.strokeStyle = rgba(C.cyan, long ? 0.35 : 0.16);
+    g.lineWidth = long ? 2 : 1.5;
+    g.beginPath();
+    g.moveTo(A - 8, y);
+    g.lineTo(A - (long ? 46 : 22), y);
+    g.stroke();
+  }
+  // Ghost bricks: faint neon outlines stacked toward the field, thinning out with distance.
+  let seed = 90210;
+  const rnd = (): number => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const cols = [C.cyan, C.pink, C.violet];
+  for (let c = 0; c < 6; c++) {
+    const x = A - 60 - c * 56;
+    if (x < 6) break;
+    for (let r = 0; r < 14; r++) {
+      if (rnd() > 0.62 - c * 0.09) continue;
+      const col = cols[Math.floor(rnd() * 3)];
+      g.save();
+      g.shadowColor = col;
+      g.shadowBlur = 8 * px;
+      g.strokeStyle = rgba(col, 0.5 - c * 0.06);
+      g.lineWidth = 2;
+      roundRect(g, x - 24, 70 + r * 62, 48, 24, 5);
+      g.stroke();
+      g.restore();
+    }
+  }
+  // The glowing edge beside the playfield.
+  g.save();
+  g.shadowColor = C.cyan;
+  g.shadowBlur = 14 * px;
+  g.strokeStyle = C.cyan;
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(A - 1.5, 0);
+  g.lineTo(A - 1.5, H);
+  g.stroke();
+  g.shadowColor = C.pink;
+  g.strokeStyle = rgba(C.pink, 0.8);
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(A - 7, 0);
+  g.lineTo(A - 7, H);
+  g.stroke();
+  g.restore();
 }

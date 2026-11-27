@@ -28,7 +28,37 @@ export interface HudInput {
   fullscreenSupported: boolean;
 }
 
+/** Minimum width (CSS px) of each letterbox bar for the score / lives side panels. */
+export const SIDE_MIN_CSS = 160;
+
+/** Side panels in logical units: left spans x0..x1 (x1 = 0, the playfield edge), right spans from LOGICAL_W. */
+export interface SideLayout {
+  /** Design-unit -> logical-unit multiplier for panel content (~1.3 CSS px per design unit, less on small screens). */
+  k: number;
+  left: { x0: number; x1: number };
+  right: { x0: number; x1: number };
+}
+
+/** Pure: the side-panel layout, or null when either bar (inside the safe area) is narrower than SIDE_MIN_CSS. */
+export function computeSideLayout(i: Pick<HudInput, 'cssH' | 'scale' | 'offsetX' | 'safe'>): SideLayout | null {
+  const s = i.scale > 0 ? i.scale : 1;
+  const leftCss = Math.max(0, i.offsetX - i.safe.left);
+  const rightCss = Math.max(0, i.offsetX - i.safe.right);
+  if (leftCss < SIDE_MIN_CSS || rightCss < SIDE_MIN_CSS) return null;
+  // Panel content is designed ~200 units wide and ~330 tall; scale it to fit the narrower bar and the screen height.
+  const css = Math.max(0.5, Math.min(1.3, (Math.min(leftCss, rightCss) - 24) / 200, (i.cssH - 56) / 330));
+  return {
+    k: css / s,
+    left: { x0: -leftCss / s, x1: 0 },
+    right: { x0: LOGICAL_W, x1: LOGICAL_W + rightCss / s },
+  };
+}
+
 export interface HudLayout {
+  /** Side panels (score / level / stars left, lives / timers right), or null: everything stays in the top band. */
+  side: SideLayout | null;
+  /** Width of each letterbox side bar in logical units (0 when there is none). */
+  bar: number;
   /** Visual diameter of the icon buttons, CSS px (the touch target is always at least MIN_TOUCH). */
   v: number;
   /** Touch target size, CSS px. */
@@ -78,6 +108,8 @@ export function computeHudLayout(i: HudInput): HudLayout {
   const edgeRight = toLx(rightCss) - 10;
   const livesRight = fs ? toLx(rightCss - slot) + 2 : edgeRight;
   return {
+    side: computeSideLayout(i),
+    bar: i.offsetX > 1 ? i.offsetX / s : 0,
     v,
     touch: Math.max(MIN_TOUCH, v),
     cy: toLy(cyCss),

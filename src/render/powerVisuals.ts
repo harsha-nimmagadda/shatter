@@ -18,6 +18,36 @@ export function categoryColor(type: string): string {
   return CATEGORY_COLORS[cat ?? 'ball'];
 }
 
+export type CapsuleShape = 'circle' | 'square' | 'hexagon' | 'saw';
+
+/** Badge outline per category so the categories also differ by shape (colour-blind friendly): ball circle, paddle rounded square, utility hexagon, hazard spiky saw. */
+export const CATEGORY_SHAPES: Record<PowerCategory, CapsuleShape> = { ball: 'circle', paddle: 'square', utility: 'hexagon', hazard: 'saw' };
+
+export function capsuleShape(type: string): CapsuleShape {
+  const cat = (POWER_CATEGORY as Record<string, PowerCategory | undefined>)[type];
+  return CATEGORY_SHAPES[cat ?? 'ball'];
+}
+
+/** One-line effect text per power-up (3-5 words) for the catch callout. */
+export const POWER_EFFECTS: Record<PowerType, string> = {
+  photocopy: '3 balls!',
+  crumpled: 'Smash through bricks!',
+  plane: 'Balls home in',
+  highlighter: 'Hits splash neighbours',
+  correction: 'Ball slows down',
+  ruler: 'Paddle is wider',
+  gluestick: 'Ball sticks, tap to launch',
+  stapler: 'Paddle shoots lasers',
+  eraser: 'Wipes a row of bricks',
+  goldstar: 'Extra life!',
+  paperclip: 'Pulls power-ups in',
+  stickynote: 'Safety net under you',
+  sharpener: 'Paddle shrinks!',
+  scissors: 'Paddle splits in two!',
+  redpen: 'Ball goes much faster!',
+};
+export const powerEffect = (type: string): string => (POWER_EFFECTS as Record<string, string>)[type] ?? '';
+
 /** Highlighter trail colour behind a ball for the active ball effects. */
 export const TRAIL_COLORS = { highlighter: '#39FF14', crumpled: '#FF7A1A', plane: '#00E5FF', redpen: '#FF3B5C', none: '#7FD8FF' } as const;
 

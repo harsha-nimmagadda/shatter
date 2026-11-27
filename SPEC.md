@@ -13,7 +13,7 @@ is unchanged from the current engine (`src/engine/config.ts`).
 - Drops: 15% per brick that counts toward winning, max 3 capsules falling.
 - **Controls: tilt stays the default on touch devices, drag is the alternative** (your original
   choice; Gemini's doc flipped it — one-line change in `src/input/settings.ts` if you want drag).
-- Music: none in v1. SFX only.
+- Music: two original synthesized chiptune loops with on/off and volume settings (see Visual direction v1.2 and Audio below).
 
 ## Bricks (level chars unchanged: `. 1 2 3 # x m r h`)
 | Char | Name | HP | Counts | Notes |

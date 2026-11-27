@@ -11,6 +11,7 @@ export function loseLife(w: World): void {
   w.effects = {};
   w.combo = 0;
   w.clipStreak = 0;
+  w.stallT = 0;
   for (const k of w.bricks) k.streakHits = 0;
   w.net = false;
   w.stapleCd = 0;

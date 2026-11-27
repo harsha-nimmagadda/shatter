@@ -118,6 +118,8 @@ export interface World {
   combo: number;
   /** Ball hits on metal clips since the last breakable-brick damage. */
   clipStreak: number;
+  /** Seconds of play since a breakable brick was last damaged (anti-stall nudge). */
+  stallT: number;
   /** Score at which the next extra life is awarded. */
   nextLifeAt: number;
   nextId: number;
@@ -170,6 +172,7 @@ export function createWorld(
     stapleCd: 0,
     combo: 0,
     clipStreak: 0,
+    stallT: 0,
     nextLifeAt: CONFIG.extraLifeEvery,
     nextId: 1,
     dropChance: opts.dropChance ?? (opts.forcedPower ? 1 : CONFIG.dropChance),

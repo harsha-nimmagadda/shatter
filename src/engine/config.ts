@@ -19,7 +19,7 @@ export const isPositive = (type: PowerType): boolean => POWER_CATEGORY[type] !==
 
 /** Power-ups that run on a timer (seconds remaining live in world.effects). */
 export const EFFECT_NAMES = [
-  'crumpled', 'plane', 'highlighter', 'ruler', 'gluestick', 'stapler', 'paperclip', 'sharpener', 'scissors', 'redpen',
+  'crumpled', 'plane', 'highlighter', 'correction', 'ruler', 'gluestick', 'stapler', 'paperclip', 'sharpener', 'scissors', 'redpen',
 ] as const;
 export type EffectName = (typeof EFFECT_NAMES)[number];
 
@@ -58,12 +58,12 @@ export const CONFIG = {
     eraser: 4, goldstar: 3, paperclip: 5, stickynote: 5, sharpener: 4, scissors: 3, redpen: 5,
   } as Record<PowerType, number>,
   effectSeconds: {
-    crumpled: 10, plane: 5, highlighter: 10, ruler: 8, gluestick: 12, stapler: 10, paperclip: 12, sharpener: 10,
+    crumpled: 10, plane: 5, highlighter: 10, correction: 10, ruler: 8, gluestick: 12, stapler: 10, paperclip: 12, sharpener: 10,
     scissors: 8, redpen: 10,
   } as Record<EffectName, number>,
   sharpenerMul: 0.7,
   rulerW: 160,
-  rulerMaxBounceDeg: 25,
+  rulerMaxBounceDeg: 40,
   scissorsGap: 24,
   staplerInterval: 0.4,
   paperclipRange: 220,
@@ -84,6 +84,14 @@ export const CONFIG = {
   glueAutoRelease: 3,
   stapleSpeed: 900,
   planeTurn: 3,
+  /** Anti-stall: after this many seconds of play with no breakable brick damaged, paddle bounces lean toward the bricks. */
+  stallAssistSec: 15,
+  /** Max lean of a paddle bounce toward the nearest counting brick when the nudge starts, degrees... */
+  stallNudgeDeg: 15,
+  /** ...growing this many degrees per further second of stall... */
+  stallNudgeGrowth: 1,
+  /** ...up to this cap. */
+  stallNudgeMaxDeg: 35,
   /** Sticky-note net: ball bottom bounces at height - netInset. */
   netInset: 24,
   explosionRx: 75,

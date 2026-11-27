@@ -14,15 +14,14 @@ export function applyPower(w: World, type: PowerType): void {
     if (type === 'stapler' && !wasActive) w.stapleCd = 0;
     // Red Pen: one speed boost only; re-catching just refreshes the timer.
     if (type === 'redpen' && !wasActive) scaleSpeed(w, Math.min(C.maxSpeed, w.speed * C.redpenMul));
+    // Slow-mo: one slow-down only; re-catching just refreshes the timer.
+    if (type === 'correction' && !wasActive) scaleSpeed(w, Math.max(C.correctionFloor * C.startSpeed, w.speed * C.correctionMul));
     applyPaddleWidth(w);
     return;
   }
   switch (type) {
     case 'photocopy':
       photocopy(w);
-      break;
-    case 'correction':
-      scaleSpeed(w, Math.max(C.correctionFloor * C.startSpeed, w.speed * C.correctionMul));
       break;
     case 'goldstar':
       w.lives = Math.min(C.maxLives, w.lives + 1);
@@ -80,6 +79,7 @@ export function updateEffects(w: World, dt: number): void {
       delete w.effects[name];
       w.events.push({ type: 'effectEnd', x: w.paddle.x, y: w.paddle.y, power: name });
       if (name === 'redpen') scaleSpeed(w, Math.max(C.startSpeed, w.speed / C.redpenMul));
+      if (name === 'correction') scaleSpeed(w, Math.min(C.maxSpeed, w.speed / C.correctionMul));
     } else {
       w.effects[name] = left - dt;
     }

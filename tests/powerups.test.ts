@@ -146,7 +146,7 @@ describe('paddle size', () => {
     expect(v.paddle.w).toBe(160);
   });
 
-  it('ruler narrows the max bounce angle to 25 degrees', () => {
+  it('ruler narrows the max bounce angle to 40 degrees', () => {
     const w = world();
     applyPower(w, 'ruler');
     step(w, NONE, DT);
@@ -154,18 +154,19 @@ describe('paddle size', () => {
     w.balls = [ball(p.x + p.w / 2, p.y - CONFIG.ballR + 1, 0, 420)];
     step(w, NONE, DT);
     const b = w.balls[0]!;
-    expect((Math.atan2(b.vx, -b.vy) * 180) / Math.PI).toBeCloseTo(25, 3);
+    expect((Math.atan2(b.vx, -b.vy) * 180) / Math.PI).toBeCloseTo(40, 3);
   });
 });
 
 describe('timed effects', () => {
-  it('there are exactly 15 powers and 10 timed ones', () => {
+  it('there are exactly 15 powers and 11 timed ones', () => {
     expect([...POWER_TYPES].sort()).toEqual([
       'correction', 'crumpled', 'eraser', 'gluestick', 'goldstar', 'highlighter', 'paperclip', 'photocopy', 'plane',
       'redpen', 'ruler', 'scissors', 'sharpener', 'stapler', 'stickynote',
     ]);
     expect([...EFFECT_NAMES].sort()).toEqual([
-      'crumpled', 'gluestick', 'highlighter', 'paperclip', 'plane', 'redpen', 'ruler', 'scissors', 'sharpener', 'stapler',
+      'correction', 'crumpled', 'gluestick', 'highlighter', 'paperclip', 'plane', 'redpen', 'ruler', 'scissors', 'sharpener',
+      'stapler',
     ]);
   });
 
@@ -197,7 +198,7 @@ describe('timed effects', () => {
 
   it('durations and weights match the spec', () => {
     expect(CONFIG.effectSeconds).toEqual({
-      crumpled: 10, plane: 5, highlighter: 10, ruler: 8, gluestick: 12, stapler: 10, paperclip: 12, sharpener: 10,
+      crumpled: 10, plane: 5, highlighter: 10, correction: 10, ruler: 8, gluestick: 12, stapler: 10, paperclip: 12, sharpener: 10,
       scissors: 8, redpen: 10,
     });
     expect(CONFIG.dropWeights).toEqual({
@@ -485,14 +486,25 @@ describe('highlighter', () => {
 });
 
 describe('correction, goldstar, redpen', () => {
-  it('correction takes 30% off, floored at 0.7 x start speed; balls rescaled', () => {
+  it('correction takes 30% off for 10 s (floored at 0.7 x start), re-catch only refreshes, then speed returns', () => {
     const w = world();
     w.speed = 800;
     w.balls[0]!.vy = -800;
     applyPower(w, 'correction');
     expect(w.speed).toBeCloseTo(560);
     expect(speedOf(w.balls[0]!)).toBeCloseTo(560);
-    for (let i = 0; i < 20; i++) applyPower(w, 'correction');
+    expect(w.effects.correction).toBe(10);
+    applyPower(w, 'correction');
+    expect(w.speed).toBeCloseTo(560);
+    w.effects.correction = DT / 2;
+    step(w, NONE, DT);
+    expect(w.effects.correction).toBeUndefined();
+    expect(w.speed).toBeCloseTo(800);
+  });
+
+  it('correction respects the 0.7 x start-speed floor', () => {
+    const w = world();
+    applyPower(w, 'correction');
     expect(w.speed).toBeCloseTo(0.7 * CONFIG.startSpeed);
   });
 
@@ -846,5 +858,38 @@ describe('determinism with power-ups', () => {
     const b = play();
     expect(a).toEqual(b);
     expect(a.time).toBeGreaterThan(5);
+  });
+});
+
+describe('anti-stall nudge', () => {
+  it('leans paddle bounces toward a counting brick only after the stall threshold, by at most stallNudgeDeg', () => {
+    const bounceAngle = (stallT: number): number => {
+      const w = world([mk(902, 450, 150)]);
+      const p = w.paddle;
+      w.stallT = stallT;
+      w.balls = [ball(p.x, p.y - CONFIG.ballR + 1, 0, 420)];
+      step(w, NONE, DT);
+      const b = w.balls[0]!;
+      return (Math.atan2(b.vx, -b.vy) * 180) / Math.PI;
+    };
+    expect(bounceAngle(CONFIG.stallAssistSec - 1)).toBeCloseTo(0, 3);
+    const leaned = bounceAngle(CONFIG.stallAssistSec);
+    expect(leaned).toBeGreaterThan(0);
+    expect(leaned).toBeLessThanOrEqual(CONFIG.stallNudgeDeg + CONFIG.stallNudgeGrowth * DT + 1e-6);
+    expect(bounceAngle(CONFIG.stallAssistSec + 100)).toBeLessThanOrEqual(CONFIG.stallNudgeMaxDeg + 1e-6);
+  });
+
+  it('brick damage and losing a life reset the stall timer', () => {
+    const k = mk(901, 200, 300, 'normal', 2);
+    const w = world([k]);
+    w.status = 'playing';
+    w.stallT = 15;
+    damageBrick(w, k, 1);
+    expect(w.stallT).toBe(0);
+    w.stallT = 15;
+    w.balls = [ball(270, w.height + 40, 0, 420)];
+    step(w, NONE, DT);
+    expect(w.lives).toBe(CONFIG.lives - 1);
+    expect(w.stallT).toBe(0);
   });
 });

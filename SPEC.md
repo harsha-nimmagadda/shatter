@@ -7,7 +7,7 @@ is unchanged from the current engine (`src/engine/config.ts`).
 ## Unchanged from today
 - 540×960 logical playfield, 120 Hz fixed step, substepped collision.
 - Ball: start 420 px/s, +1.5% per brick broken by a ball, max 1000. Launch ±20°, paddle bounce ±60°
-  (±25° during Ruler), min vertical ratio 0.3.
+  (±40° during Ruler), min vertical ratio 0.3.
 - Lives: start 3, max 9. Losing a life resets speed, clears timed effects, falling capsules, staples,
   the combo and the sticky note, then serves.
 - Drops: 15% per brick that counts toward winning, max 3 capsules falling.
@@ -24,6 +24,16 @@ is unchanged from the current engine (`src/engine/config.ts`).
 | m | Sliding Tab | 1 | yes | Slides **horizontally** at 50 px/s; a faint dotted track is drawn along its path. |
 | r | Re-sketching | 1 | no | Re-forms after 6 s. **Scores 0 points and never drops capsules.** |
 | h | Invisible Ink | 2 | yes | Drawn as a faint crease (not fully invisible). First hit reveals in highlighter ink, second breaks. |
+
+**Anti-stall nudge.** `world.stallT` counts seconds of play since any breakable brick was last damaged (reset by
+any damage, and on losing a life). From 15 s on, each paddle bounce leans toward the nearest counting brick by up
+to 15°, growing 1° per further second to a 35° cap, always within the normal bounce limit. Bounce-time nudging was
+chosen over continuous steering, which made balls orbit bricks in sims. Added after sims showed the Warm-up level
+stalling on its last bricks (worst stall on Hidden test fell from ~205 s to ~66 s, Warm-up timeouts 13.5% -> 9.8%).
+Level rule for milestone 7: no lone bricks tucked where a bounce can't reach them.
+
+**Hazards stay gentle** (sims: bots dodge ~70% of hazard capsules and a caught one costs < 0.1 lives per game);
+this suits the casual audience.
 
 **Metal Clip anti-softlock.** The world keeps a `clipStreak` count and a per-clip `streakHits`.
 - A ball hitting a clip: `clipStreak += 1`, that clip's `streakHits += 1`.
@@ -46,8 +56,10 @@ is unchanged from the current engine (`src/engine/config.ts`).
   The multiplier is evaluated when the points are awarded (the break that reaches 3 already gets 1.5×).
 - +50 for catching a positive capsule (everything except Sharpener, Scissors, Red Pen).
 - +250 per remaining life when the level is won.
-- +1 life at every 10,000 points (max 9). Thresholds to be tuned with the simulations.
-- Stars per level: decided in milestone 7 from the simulation data.
+- +1 life at every 10,000 points (max 9). **The score carries across the whole campaign run** (one level scores
+  ~900–2,000, so 10,000 is never reached inside a single level; sims 2026-11-27).
+- Stars per level (milestone 7): 1 star = clear, 2 stars = the Casual sim bot's median score on that level,
+  3 stars = the Casual bot's top-20% score. Recomputed with `npm run sim` whenever a level changes.
 
 ## Power-ups (15)
 Badge colour = category: **blue = ball, green = paddle, gold = utility, red = hazard.**
@@ -59,8 +71,8 @@ Capsules are round icon badges with no text.
 | crumpled | Crumpled Wad | ball | 2 damage per hit. If the hit destroys the brick the ball keeps going without bouncing; otherwise it bounces. Clips always bounce. | 10 s | 6 |
 | plane | Paper Plane | ball | Balls steer toward the nearest counting brick (as today). | 5 s | 5 |
 | highlighter | Highlighter | ball | When a ball damages a brick, each brick touching it edge-to-edge (up/down/left/right, within 2 px) takes 1 splash damage. Splash reveals Invisible Ink, can detonate bombs, ignores clips, does not splash again. | 10 s | 6 |
-| correction | Correction Tape | ball | Ball speed −30%, floor 70% of base speed. | instant | 7 |
-| ruler | Ruler | paddle | Paddle width 160, bounce angle capped at ±25°. | 8 s | 8 |
+| correction | Correction Tape | ball | Ball speed −30% (floor 70% of base speed); when it ends, speed ÷0.7 (capped at max). Re-catching only refreshes the timer. Was permanent until the 2026-11-27 sims showed it dragged levels out. | 10 s | 7 |
+| ruler | Ruler | paddle | Paddle width 160, bounce angle capped at ±40° (was ±25°, which cancelled out the wider paddle in sims). | 8 s | 8 |
 | gluestick | Glue Stick | paddle | Balls stick on paddle contact; fire launches; auto-launch after 3 s. | 12 s | 7 |
 | stapler | Stapler | paddle | Fires 2 staples (from both paddle ends) **automatically every 0.4 s**; no tapping. Clips absorb staples. | 10 s | 7 |
 | eraser | Pink Eraser | utility | Destroys the lowest row of breakable bricks (as today). | instant | 4 |

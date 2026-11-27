@@ -1,7 +1,7 @@
 import { CONFIG as C } from './config';
-import { clamp, paddleVelocity } from './balls';
-import { clipHit, damageBrickBall } from './bricks';
-import { paddleSegments } from './paddle';
+import { DEG, clamp, paddleVelocity } from './balls';
+import { clipHit, counts, damageBrickBall } from './bricks';
+import { maxBounceDeg, paddleSegments } from './paddle';
 import type { Ball, Brick, World } from './state';
 
 export function collideWalls(w: World, b: Ball): boolean {
@@ -110,9 +110,36 @@ export function collidePaddle(w: World, b: Ball): boolean {
     const v = paddleVelocity(w, (b.x - p.x) / (p.w / 2));
     b.vx = v.vx;
     b.vy = v.vy;
+    if (w.stallT >= C.stallAssistSec) nudgeBounce(w, b);
   }
   w.events.push({ type: 'paddle', x: b.x, y: b.y });
   return true;
+}
+
+/**
+ * Anti-stall: after a long stretch with no brick damaged, lean a paddle bounce toward the nearest counting brick
+ * (by up to stallNudgeDeg, growing with the stall), staying inside the normal bounce-angle limit.
+ */
+function nudgeBounce(w: World, b: Ball): void {
+  let best: Brick | null = null;
+  let bestD = Infinity;
+  for (const k of w.bricks) {
+    if (!counts(k)) continue;
+    const d = Math.hypot(k.x + k.w / 2 - b.x, k.y + k.h / 2 - b.y);
+    if (d < bestD) {
+      bestD = d;
+      best = k;
+    }
+  }
+  if (!best) return;
+  const lean = Math.min(C.stallNudgeMaxDeg, C.stallNudgeDeg + (w.stallT - C.stallAssistSec) * C.stallNudgeGrowth) * DEG;
+  const limit = maxBounceDeg(w) * DEG;
+  const speed = Math.hypot(b.vx, b.vy);
+  const a = Math.atan2(b.vx, -b.vy);
+  const want = Math.atan2(best.x + best.w / 2 - b.x, b.y - (best.y + best.h / 2));
+  const next = clamp(a + clamp(want - a, -lean, lean), -limit, limit);
+  b.vx = speed * Math.sin(next);
+  b.vy = -speed * Math.cos(next);
 }
 
 /** Sticky-note net: bounces one ball back up from just above the bottom edge, then is used up. */

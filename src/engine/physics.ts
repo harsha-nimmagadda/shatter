@@ -34,6 +34,7 @@ export function step(world: World, input: Input, dt: number): void {
     updateGhosts(world, dt);
   }
   if (world.status === 'playing') {
+    world.stallT += dt;
     steerBalls(world, dt);
     for (const ball of world.balls) {
       if (world.status === 'playing' && !ball.stuck) moveBall(world, ball, dt);

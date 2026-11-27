@@ -36,6 +36,7 @@ function awardHp(w: World, k: Brick, hp: number): void {
 /** Any damage to a breakable brick clears the clip anti-softlock streak. */
 export function resetClipStreak(w: World): void {
   w.clipStreak = 0;
+  w.stallT = 0;
   for (const k of w.bricks) if (k.type === 'steel') k.streakHits = 0;
 }
 

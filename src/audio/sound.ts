@@ -13,7 +13,7 @@ export interface PlayOpts {
 export const SOUND_IDS = [
   'paddle', 'wall', 'brick', 'break', 'steel', 'explode', 'launch', 'powerup', 'powerdown', 'laser',
   'eraser', 'lifelost', 'won', 'gameover', 'regen', 'reveal', 'net', 'click', 'shred',
-  'staple', 'cliploose', 'clippop', 'snip', 'splash', 'paperclip', 'goldstar', 'redpen', 'combo',
+  'staple', 'cliploose', 'clippop', 'snip', 'splash', 'paperclip', 'goldstar', 'redpen', 'combo', 'star',
 ] as const;
 
 /** Bounces are quieter than breaks. */
@@ -22,7 +22,7 @@ export const BASE_VOLUME: Record<string, number> = {
   powerdown: 0.7, laser: 0.4, eraser: 0.6, lifelost: 0.85, won: 0.8, gameover: 0.8, regen: 0.4, reveal: 0.45,
   net: 0.6, click: 0.35, shred: 0.4,
   staple: 0.22, cliploose: 0.45, clippop: 0.6, snip: 0.65, splash: 0.5, paperclip: 0.6, goldstar: 0.8, redpen: 0.7,
-  combo: 0.55,
+  combo: 0.55, star: 0.6,
 };
 
 const SFX_RATE = 44100;

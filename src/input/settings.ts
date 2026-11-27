@@ -23,6 +23,8 @@ export interface ControlSettings {
   reducedFx: boolean;
   /** Vibration on hits (phones that support it). */
   haptics: boolean;
+  /** Graphics quality: Auto adapts to the frame rate. */
+  graphics: 'auto' | 'high' | 'low';
 }
 
 export const CONTROLS_KEY = 'shatter.controls';
@@ -30,7 +32,7 @@ export const CONTROLS_KEY = 'shatter.controls';
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
 export function defaultSettings(touch: boolean): ControlSettings {
-  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, haptics: true };
+  return { mode: touch ? 'tilt' : 'drag', tiltSensitivity: 5, dragSensitivity: 1.5, tiltNeutral: 0, invertTilt: false, shake: true, muted: false, volume: 0.8, music: true, musicVolume: 0.5, reducedFx: false, haptics: true, graphics: 'auto' };
 }
 
 /** Pure: parses stored JSON, falling back to defaults per field. */
@@ -60,6 +62,7 @@ export function parseSettings(raw: string | null, touch: boolean): ControlSettin
     musicVolume: num(r.musicVolume, 0, 1, d.musicVolume),
     reducedFx: typeof r.reducedFx === 'boolean' ? r.reducedFx : d.reducedFx,
     haptics: typeof r.haptics === 'boolean' ? r.haptics : d.haptics,
+    graphics: r.graphics === 'auto' || r.graphics === 'high' || r.graphics === 'low' ? r.graphics : d.graphics,
   };
 }
 

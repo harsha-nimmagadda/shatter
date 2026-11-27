@@ -23,7 +23,17 @@ export const C = {
 
 /** Heavy display stack: Arial Black / Segoe UI Black on desktop, Roboto Black / SF Heavy on phones. */
 export const FONT_FAMILY = '"Arial Black", "Segoe UI Black", "Roboto", "Helvetica Neue", system-ui, sans-serif';
-export const font = (px: number, italic = true): string => `${italic ? 'italic ' : ''}900 ${px}px ${FONT_FAMILY}`;
+const FONTS = new Map<number, string>();
+/** CSS font string, memoised so per-frame HUD text does no string building. */
+export const font = (px: number, italic = true): string => {
+  const k = italic ? px : -px;
+  let f = FONTS.get(k);
+  if (f === undefined) {
+    f = `${italic ? 'italic ' : ''}900 ${px}px ${FONT_FAMILY}`;
+    FONTS.set(k, f);
+  }
+  return f;
+};
 
 /** Main neon colour of a brick (by type, and by max HP for normal bricks). */
 export function brickHue(type: BrickType, maxHp: number): string {

@@ -319,6 +319,14 @@ export const SFX: Record<string, { tones: Tone[]; fx?: FxOpts }> = {
     ],
     fx: { crush: 20 },
   },
+  star: {
+    tones: [
+      { dur: 0.32, wave: 'sine', f0: N('C6'), vol: 0.5, curve: 1.4 },
+      { dur: 0.22, wave: 'sq25', f0: N('G6'), vol: 0.22, curve: 1.8 },
+      { t: 0.02, dur: 0.16, wave: 'sine', f0: N('C7'), vol: 0.25, curve: 2 },
+    ],
+    fx: { echo: [0.09, 0.3, 0.3] },
+  },
   combo: {
     tones: [
       { dur: 0.1, wave: 'sq25', f0: N('E6'), vol: 0.4, curve: 1 },

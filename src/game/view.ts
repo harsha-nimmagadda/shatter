@@ -26,6 +26,7 @@ export class View {
   private cssW = 0;
   private cssH = 0;
   private dpr = 1;
+  private dprCap = MAX_DPR;
   private fit: Fit = { scale: 1, offsetX: 0, offsetY: 0 };
   private readonly onResize = (): void => this.resize();
 
@@ -38,10 +39,17 @@ export class View {
   resize(): void {
     this.cssW = this.canvas.clientWidth;
     this.cssH = this.canvas.clientHeight;
-    this.dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    this.dpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
     this.canvas.width = Math.round(this.cssW * this.dpr);
     this.canvas.height = Math.round(this.cssH * this.dpr);
     this.fit = fitPlayfield(this.cssW, this.cssH);
+  }
+
+  /** Caps the canvas device-pixel ratio (adaptive quality); resizes only when the cap actually changes it. */
+  setDprCap(cap: number): void {
+    if (cap === this.dprCap) return;
+    this.dprCap = cap;
+    this.resize();
   }
 
   /** Device pixels per logical unit (dpr * fit scale). */
@@ -52,8 +60,18 @@ export class View {
   /** Clears the whole canvas to the margin colour and sets the logical-coordinate transform. */
   begin(ctx: CanvasRenderingContext2D): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Only the letterbox bars: the playfield itself is fully covered by the background blit.
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
+    const x0 = Math.max(0, Math.ceil(this.dpr * this.fit.offsetX));
+    const y0 = Math.max(0, Math.ceil(this.dpr * this.fit.offsetY));
+    const x1 = Math.min(cw, Math.floor(this.dpr * (this.fit.offsetX + LOGICAL_W * this.fit.scale)));
+    const y1 = Math.min(ch, Math.floor(this.dpr * (this.fit.offsetY + LOGICAL_H * this.fit.scale)));
     ctx.fillStyle = MARGIN_COLOR;
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    if (y0 > 0) ctx.fillRect(0, 0, cw, y0);
+    if (y1 < ch) ctx.fillRect(0, y1, cw, ch - y1);
+    if (x0 > 0) ctx.fillRect(0, y0, x0, y1 - y0);
+    if (x1 < cw) ctx.fillRect(x1, y0, cw - x1, y1 - y0);
     const k = this.dpr * this.fit.scale;
     ctx.setTransform(k, 0, 0, k, this.dpr * this.fit.offsetX, this.dpr * this.fit.offsetY);
   }

@@ -62,7 +62,10 @@ export class Menus {
     private readonly root: HTMLElement,
     private readonly nav: Nav,
     private readonly onClosed: () => void,
+    /** Called as each earned star pops in on a result card (index 0..2). */
+    private readonly onStar?: (index: number) => void,
   ) {}
+  private starTimers: number[] = [];
 
   open(): boolean {
     return this.cur !== null;
@@ -70,6 +73,8 @@ export class Menus {
 
   close(): void {
     window.clearTimeout(this.autoTimer);
+    for (const t of this.starTimers) window.clearTimeout(t);
+    this.starTimers = [];
     if (!this.cur) return;
     this.cur.remove();
     this.cur = null;
@@ -95,14 +100,14 @@ export class Menus {
     this.introEl = null;
   }
 
-  showIntro(num: number, name: string, hint: string): void {
+  showIntro(num: number, name: string, hint: string, ms = 1600): void {
     this.dismissIntro();
     const d = el('div', 'ui-intro');
     d.append(el('div', 'k', `LEVEL ${num}`), el('div', 'n', name), el('div', 'h', hint));
     d.setAttribute('role', 'status');
     this.introEl = d;
     this.root.appendChild(d);
-    this.introTimer = window.setTimeout(() => this.dismissIntro(), 1600);
+    this.introTimer = window.setTimeout(() => this.dismissIntro(), ms);
   }
 
   // ---- Generic card ----
@@ -136,6 +141,12 @@ export class Menus {
     card.append(btns);
     ov.append(card);
     this.mount(ov, o.onBack);
+    // Star pops follow the CSS animation delay (0.25 s + 0.4 s per star); chime on each earned star.
+    if (o.stars) {
+      for (let i = 0; i < o.stars; i++) {
+        this.starTimers.push(window.setTimeout(() => this.onStar?.(i), 300 + i * 400));
+      }
+    }
     if (o.autoMs && primary) {
       const p = primary;
       this.autoTimer = window.setTimeout(() => {
@@ -144,10 +155,11 @@ export class Menus {
     }
   }
 
-  showContinue(level: number, h: { onContinue(): void; onNew(): void; onBack(): void }): void {
+  showContinue(level: number, h: { onContinue(): void; onNew(): void; onBack(): void }, subtitle?: string): void {
     this.card({
       kicker: 'WELCOME BACK',
       title: 'World 1',
+      ...(subtitle ? { subtitle } : {}),
       buttons: [
         { label: `Continue from level ${level}`, primary: true, onClick: h.onContinue },
         { label: 'New run', onClick: h.onNew },

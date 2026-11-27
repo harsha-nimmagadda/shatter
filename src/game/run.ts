@@ -1,3 +1,5 @@
+import { CAMPAIGN } from '../engine/campaign';
+import { readStore, removeStore, writeStore } from '../ui/storage';
 import { levelStars } from './campaign';
 
 /** Lives at the start of a run and after a retry. */
@@ -50,3 +52,40 @@ export function winLevel(
 export function retryLevel(run: RunState): RunState {
   return { levelIndex: run.levelIndex, startLives: RUN_LIVES, startScore: run.startScore };
 }
+
+export const RUN_KEY = 'shatter.run.v1';
+const MAX_LIVES = 99;
+
+/** Pure: a stored run, or null for missing/corrupt data. Out-of-range values are clamped. */
+export function parseRun(json: string | null, levelCount: number = CAMPAIGN.length): RunState | null {
+  if (!json) return null;
+  let o: unknown;
+  try {
+    o = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof o !== 'object' || o === null) return null;
+  const r = o as Record<string, unknown>;
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : null);
+  const li = num(r.levelIndex);
+  const lives = num(r.startLives);
+  const score = num(r.startScore);
+  if (li === null || lives === null || score === null) return null;
+  return {
+    levelIndex: Math.max(0, Math.min(levelCount - 1, li)),
+    startLives: Math.max(1, Math.min(MAX_LIVES, lives)),
+    startScore: Math.max(0, score),
+  };
+}
+
+/** What PLAY -> Continue resumes: the saved run, else the highest unlocked level; null when there is nothing to continue. */
+export function continueRun(saved: RunState | null, unlocked: number): RunState | null {
+  const fresh = saved !== null && saved.levelIndex === 0 && saved.startLives === RUN_LIVES && saved.startScore === 0;
+  if (saved && !fresh) return saved;
+  return unlocked > 0 ? startRun(unlocked) : null;
+}
+
+export const loadRun = (): RunState | null => parseRun(readStore(RUN_KEY));
+export const saveRun = (r: RunState): void => writeStore(RUN_KEY, JSON.stringify(r));
+export const clearRun = (): void => removeStore(RUN_KEY);

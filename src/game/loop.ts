@@ -50,12 +50,13 @@ export class Loop {
     this.last = now;
     elapsed = Math.min(Math.max(elapsed, 0), MAX_FRAME);
 
+    // Schedule first so one thrown frame can never stop the loop.
+    this.raf = requestAnimationFrame(this.frame);
     this.acc += elapsed;
     while (this.acc >= STEP) {
       this.update(STEP);
       this.acc -= STEP;
     }
     this.render(this.acc / STEP);
-    this.raf = requestAnimationFrame(this.frame);
   };
 }

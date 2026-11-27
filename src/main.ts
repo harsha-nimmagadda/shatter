@@ -10,7 +10,9 @@ import { createControlsUi } from './ui/controlsUi';
 import { Menus } from './ui/menus';
 import { Nav } from './ui/nav';
 import { loadProgress, recordWin, saveProgress } from './game/progress';
-import { retryLevel, startRun, winLevel, type RunState, type WinOutcome } from './game/run';
+import { clearRun, continueRun, loadRun, retryLevel, saveRun, startRun, winLevel, type RunState, type WinOutcome } from './game/run';
+import { QUALITY_DPR, QualityGovernor, effectiveQuality } from './game/quality';
+import { introHint, takeFirstRun } from './game/hints';
 import { SoundManager } from './audio/sound';
 import { panFromX, soundsForEvents } from './audio/events';
 
@@ -63,7 +65,17 @@ let outcome: WinOutcome | null = null;
 let prevBest = 0;
 let levelsStarted = 0;
 
-const menus = new Menus(uiRoot, nav, () => controls.clearFire());
+const menus = new Menus(uiRoot, nav, () => controls.clearFire(), (i) => {
+  // Rising chime and a light tick as each star pops in.
+  sound.play('star', { pitch: [1, 1.26, 1.5][i] ?? 1.5 });
+  if (st.haptics && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate(10 + i * 4);
+    } catch {
+      /* not allowed before a gesture */
+    }
+  }
+});
 const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
 const toTitle = (): void => {
   menus.close();
@@ -89,7 +101,9 @@ function startLevel(r: RunState): void {
   const lv = CAMPAIGN[r.levelIndex];
   resetFor(mkWorld(lv, { lives: r.startLives, score: r.startScore, levelIndex: r.levelIndex, ...(lv.featured ? { featured: lv.featured } : {}) }));
   renderer.levelLabel = `LV ${r.levelIndex + 1}`;
-  menus.showIntro(r.levelIndex + 1, lv.name, lv.hint);
+  saveRun(r);
+  const first = r.levelIndex === 0 && takeFirstRun();
+  menus.showIntro(r.levelIndex + 1, lv.name, introHint(lv.hint, first, st.mode), first ? 3200 : 1600);
 }
 
 function startTest(): void {
@@ -99,6 +113,19 @@ function startTest(): void {
   renderer.levelLabel = '';
 }
 
+const governor = new QualityGovernor();
+let appliedGfx = st.graphics;
+let appliedLevel = -1;
+function applyQuality(): void {
+  appliedGfx = st.graphics;
+  const level = effectiveQuality(st.graphics, governor.level);
+  if (level === appliedLevel) return;
+  appliedLevel = level;
+  renderer.quality = level;
+  view.setDprCap(QUALITY_DPR[level]);
+}
+
+applyQuality();
 const AUTO_MS = autoPlay ? 1500 : 0;
 
 function showLevelSelect(onBack: () => void): void {
@@ -113,13 +140,17 @@ const ui = createControlsUi(
     onPlay: () => {
       if (campaignJump >= 0) startLevel(startRun(campaignJump));
       else if (testMode) startTest();
-      else if (progress.unlocked > 0) {
-        menus.showContinue(progress.unlocked + 1, {
-          onContinue: () => startLevel(startRun(progress.unlocked)),
-          onNew: () => startLevel(startRun(0)),
-          onBack: toTitle,
-        });
-      } else startLevel(startRun(0));
+      else {
+        const resume = continueRun(loadRun(), progress.unlocked);
+        if (resume) {
+          const detail = `Lives ${resume.startLives} · Score ${fmt(resume.startScore)}`;
+          menus.showContinue(
+            resume.levelIndex + 1,
+            { onContinue: () => startLevel(resume), onNew: () => startLevel(startRun(0)), onBack: toTitle },
+            resume.startScore > 0 || resume.startLives !== 3 ? detail : undefined,
+          );
+        } else startLevel(startRun(0));
+      }
     },
     onLevels: () => showLevelSelect(toTitle),
     onPauseLevels: () => showLevelSelect(() => menus.close()),
@@ -201,7 +232,9 @@ function update(dt: number): void {
       prevBest = progress.best[run.levelIndex];
       progress = recordWin(progress, run.levelIndex, outcome.stars, outcome.levelScore, CAMPAIGN.length);
       saveProgress(progress);
-    }
+      if (outcome.next) saveRun(outcome.next);
+      else clearRun();
+    } else if (world.status === 'gameover' && run) saveRun(retryLevel(run));
   }
   if (ended && performance.now() >= endAt) {
     showEndCard();
@@ -259,13 +292,15 @@ function render(alpha: number): void {
   ui.setExternalModal(menus.open());
   if (ui.paused()) controls.clearFire();
   const c = ctx as CanvasRenderingContext2D;
+  if (view.pixelScale <= 0) return; // canvas not laid out yet
   view.begin(c);
   if (gallery) {
     drawGallery(c, view.pixelScale, now / 1000);
     return;
   }
 
-  renderer.shake.enabled = st.shake && !st.reducedFx;
+  if (governor.frame(now / 1000) || st.graphics !== appliedGfx) applyQuality();
+  renderer.shake.enabled = st.shake && !st.reducedFx && renderer.quality === 0;
   renderer.reduced = st.reducedFx;
   renderer.beat = sound.beat();
   renderer.showStatus = ui.started() && !ui.paused();
@@ -279,9 +314,12 @@ function render(alpha: number): void {
     haptics(events);
   }
   renderer.onEvents(events, world);
+  const t0 = performance.now();
   renderer.draw(c, world, prev, alpha, now / 1000);
+  renderer.drawMs += (performance.now() - t0 - renderer.drawMs) * 0.05;
 }
 
+if (params.has('fps')) (window as unknown as { __shatter?: unknown }).__shatter = { renderer, get world() { return world; } };
 new Loop(update, render).start();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

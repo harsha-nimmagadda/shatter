@@ -41,7 +41,8 @@ import {
   type XY,
 } from './powerVisuals';
 import { Shake } from './shake';
-import { SpriteCache, type Sprite } from './sprite';
+import { QUALITY_NAMES } from '../game/quality';
+import { Sprite, SpriteCache } from './sprite';
 
 const W = CONFIG.width;
 const H = CONFIG.height;
@@ -97,13 +98,23 @@ export class Renderer {
   private readonly pos: XY = { x: 0, y: 0 };
   private readonly keys: Map<string, number>[] = [];
   private reducedFx = false;
+  private q = 0;
   private lastTime = -1;
   private time = 0;
   private pixelScale = 1;
   private readonly showFps: boolean;
+  /** Smoothed renderer.draw CPU time in ms (set by main; shown in the ?fps overlay). */
+  drawMs = 0;
   private fps = 0;
+  private fpsText = '';
   private fpsAcc = 0;
   private fpsN = 0;
+  private scoreSprite: Sprite | null = null;
+  private scoreSpriteText = '';
+  private scoreSpriteScale = 0;
+  private comboSprite: Sprite | null = null;
+  private comboSpriteText = '';
+  private comboSpriteScale = 0;
   private scoreText = '0';
   private scoreShown = 0;
   private scoreInt = -1;
@@ -133,7 +144,26 @@ export class Renderer {
   /** Reduced effects: fewer particles, no flashes, still background, no glow pulses. */
   set reduced(v: boolean) {
     this.reducedFx = v;
-    this.particles.density = v ? 0.35 : 1;
+    this.applyDensity();
+  }
+
+  /** Adaptive quality 0 High, 1 Medium, 2 Low: levels above 0 cut particles, flashes, halos and background motion. */
+  set quality(q: number) {
+    this.q = q;
+    this.applyDensity();
+  }
+
+  get quality(): number {
+    return this.q;
+  }
+
+  /** True when the cheaper effect set applies (reduced effects setting or quality below High). */
+  private get lite(): boolean {
+    return this.reducedFx || this.q > 0;
+  }
+
+  private applyDensity(): void {
+    this.particles.density = this.reducedFx ? 0.35 : this.q > 0 ? 0.55 : 1;
   }
 
   get reduced(): boolean {
@@ -191,7 +221,7 @@ export class Renderer {
   }
 
   private flash(color: string, alpha: number, dur: number): void {
-    if (this.reducedFx) return;
+    if (this.lite) return;
     if (this.flashT > 0 && this.flashA * (this.flashT / this.flashMax) > alpha) return;
     this.flashColor = color;
     this.flashA = alpha;
@@ -380,7 +410,7 @@ export class Renderer {
     const tier = comboTier(comboMultiplier(world));
     this.energy += (tier / 3 - this.energy) * Math.min(1, dt * 4);
 
-    this.bg.draw(ctx, this.pixelScale, time, dt, this.energy, this.reducedFx ? 0 : this.beat, this.reducedFx);
+    this.bg.draw(ctx, this.pixelScale, time, dt, this.energy, this.lite ? 0 : this.beat, this.lite);
 
     ctx.translate(this.shake.x, this.shake.y);
     this.frame.draw(ctx, this.pixelScale);
@@ -399,7 +429,7 @@ export class Renderer {
     this.fx.drawFloats(ctx);
     ctx.translate(-this.shake.x, -this.shake.y);
 
-    if (!this.reducedFx) this.fx.drawSpeed(ctx, time);
+    if (!this.lite) this.fx.drawSpeed(ctx, time);
     this.drawHud(ctx, world, time, dt);
     this.drawStatus(ctx, world, time, dt);
     if (this.flashT > 0) {
@@ -456,7 +486,7 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
     // Breathing halos (additive), a slow diagonal wave across the wall; bombs pulse fast.
-    if (!this.reducedFx) {
+    if (!this.lite) {
       ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < list.length; i++) {
         const b = list[i];
@@ -728,7 +758,8 @@ export class Renderer {
         this.trailLen[i] = n;
         // Light trail: additive glow dots shrinking along the path.
         ctx.globalCompositeOperation = 'lighter';
-        for (let k = n - 1; k >= 1; k--) {
+        const step = this.q > 0 ? 2 : 1;
+        for (let k = n - 1; k >= 1; k -= step) {
           const f = 1 - k / TRAIL;
           const s = b.r * (meteor ? 3.2 : 2.4) * (0.35 + 0.65 * f);
           ctx.globalAlpha = tc.alpha * f;
@@ -831,15 +862,38 @@ export class Renderer {
     ctx.fillStyle = C.cyan;
     ctx.fillText('SCORE', 16, 22);
     const counting = si < target;
-    ctx.font = font(counting ? 27 : 26);
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 6;
-    ctx.globalAlpha = 0.45;
-    ctx.strokeStyle = C.pink;
-    ctx.strokeText(this.scoreText, 72, 21);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = C.white;
-    ctx.fillText(this.scoreText, 72, 21);
+    if (counting) {
+      ctx.font = font(27);
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 6;
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = C.pink;
+      ctx.strokeText(this.scoreText, 72, 21);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = C.white;
+      ctx.fillText(this.scoreText, 72, 21);
+    } else {
+      // Settled score: baked once per value instead of stroke+fill text every frame.
+      if (this.scoreSprite === null || this.scoreSpriteText !== this.scoreText || this.scoreSpriteScale !== this.pixelScale) {
+        const txt = this.scoreText;
+        this.scoreSprite = new Sprite(150, 34, 6, Math.max(0.25, this.pixelScale), (g) => {
+          g.font = font(26);
+          g.textBaseline = 'middle';
+          g.textAlign = 'left';
+          g.lineJoin = 'round';
+          g.lineWidth = 6;
+          g.globalAlpha = 0.45;
+          g.strokeStyle = C.pink;
+          g.strokeText(txt, 0, 17);
+          g.globalAlpha = 1;
+          g.fillStyle = C.white;
+          g.fillText(txt, 0, 17);
+        });
+        this.scoreSpriteText = txt;
+        this.scoreSpriteScale = this.pixelScale;
+      }
+      this.scoreSprite.draw(ctx, 72, 4);
+    }
     if (this.levelLabel) {
       ctx.textAlign = 'center';
       ctx.font = font(17);
@@ -875,18 +929,30 @@ export class Renderer {
       const tier = comboTier(mul);
       const pa = time - this.comboPopT;
       const pop = pa < 0.2 ? 1 + 0.4 * (1 - pa / 0.2) : 1 + 0.04 * Math.sin(time * 10);
+      if (this.comboSprite === null || this.comboSpriteText !== this.comboText || this.comboSpriteScale !== this.pixelScale) {
+        const txt = this.comboText;
+        const col = TIER_COLORS[tier];
+        const px = 18 + tier * 2;
+        this.comboSprite = new Sprite(190, 40, 6, Math.max(0.25, this.pixelScale), (g) => {
+          g.font = font(px);
+          g.textBaseline = 'middle';
+          g.textAlign = 'right';
+          g.lineJoin = 'round';
+          g.lineWidth = 5;
+          g.globalAlpha = 0.5;
+          g.strokeStyle = col;
+          g.strokeText(txt, 190, 20);
+          g.globalAlpha = 1;
+          g.fillStyle = C.white;
+          g.fillText(txt, 190, 20);
+        });
+        this.comboSpriteText = txt;
+        this.comboSpriteScale = this.pixelScale;
+      }
       ctx.save();
       ctx.translate(W - 66, 49);
       ctx.scale(pop, pop);
-      ctx.font = font(18 + tier * 2);
-      ctx.textAlign = 'right';
-      ctx.lineWidth = 5;
-      ctx.globalAlpha = 0.5;
-      ctx.strokeStyle = TIER_COLORS[tier];
-      ctx.strokeText(this.comboText, 0, 0);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = C.white;
-      ctx.fillText(this.comboText, 0, 0);
+      this.comboSprite.draw(ctx, -190, -20);
       ctx.restore();
     }
     this.drawEffectsRow(ctx, world, time);
@@ -945,7 +1011,7 @@ export class Renderer {
     const s = won ? this.signSprite('STAGE CLEAR!', '', C.gold, 50) : this.signSprite('GAME OVER', '', C.red, 56);
     const bob = Math.sin(time * 3) * 4;
     s.drawCentered(ctx, W / 2, H / 2 - 20 + bob);
-    if (won && !this.reducedFx) {
+    if (won && !this.lite) {
       this.fireworkCd -= dt;
       if (this.fireworkCd <= 0) {
         this.fireworkCd = 0.38;
@@ -959,6 +1025,7 @@ export class Renderer {
     this.fpsN++;
     if (this.fpsAcc >= 0.5) {
       this.fps = Math.round(this.fpsN / this.fpsAcc);
+      this.fpsText = `${this.fps} fps ${this.drawMs.toFixed(2)} ms Q:${QUALITY_NAMES[this.q] ?? '?'}`;
       this.fpsAcc = 0;
       this.fpsN = 0;
     }
@@ -966,6 +1033,6 @@ export class Renderer {
     ctx.fillStyle = C.green;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`${this.fps} fps`, 8, H - 8);
+    ctx.fillText(this.fpsText, 8, H - 8);
   }
 }

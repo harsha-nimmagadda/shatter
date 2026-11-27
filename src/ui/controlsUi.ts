@@ -255,6 +255,24 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   musicVol.input.disabled = !s.music;
   const fxRow = toggle('Reduced effects', () => s.reducedFx, (v) => (s.reducedFx = v));
   const hapticsRow = toggle('Vibration', () => s.haptics, (v) => (s.haptics = v));
+  const gfxRow = el('div', 'ui-row');
+  gfxRow.append(el('span', undefined, 'Graphics'));
+  const gfxSeg = el('div', 'ui-seg');
+  const gfxBtns = (['auto', 'high', 'low'] as const).map((g) => {
+    const b = el('button', 'ui-btn', g.toUpperCase());
+    b.addEventListener('click', () => {
+      s.graphics = g;
+      saveSettings(s);
+      syncGfx();
+    });
+    return [g, b] as const;
+  });
+  const syncGfx = (): void => {
+    for (const [g, b] of gfxBtns) b.classList.toggle('on', s.graphics === g);
+  };
+  syncGfx();
+  for (const [, b] of gfxBtns) gfxSeg.append(b);
+  gfxRow.append(gfxSeg);
   const volume = slider('Volume', 0, 1, 0.05, () => s.volume, (v) => {
     s.volume = v;
     sound?.setVolume(v);
@@ -311,7 +329,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   panel.append(
     modeRow, tiltSens.row, invertRow, recal, dragSens.row,
     soundRow, volume.row, musicRow, musicVol.row,
-    shakeRow, fxRow, hapticsRow, msg, closeBtn,
+    shakeRow, fxRow, gfxRow, hapticsRow, msg, closeBtn,
   );
   panelOv.append(panel);
 

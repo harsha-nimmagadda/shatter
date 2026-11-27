@@ -9,7 +9,7 @@ export function introHint(base: string, firstRun: boolean, mode: 'tilt' | 'drag'
     mode === 'tilt'
       ? 'Tilt to move, tap to launch'
       : mode === 'stick'
-        ? 'Use the stick on the left to move, tap the right side to launch'
+        ? 'Hold anywhere to steer, tap to launch'
         : 'Drag to move, tap to launch';
   return `${base}. ${how}`;
 }

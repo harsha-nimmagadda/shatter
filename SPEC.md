@@ -102,3 +102,9 @@ through, laser, speedup, slowdown, extralife, killpaddle, inkblot.
 ## Audio
 All SFX and music are synthesized on the device (`src/audio/synth.ts`, rendered in a worker); no audio files.
 Two original chiptune loops (Music on/off + volume settings); break sounds climb a pentatonic ladder with the rally.
+
+## Controls and HUD (2026-11-27 UX pass)
+- **HUD band**: `[pause] SCORE | LEVEL | hearts [fullscreen]` laid out once in `src/game/hud.ts` and shared by the canvas and the DOM buttons (44 px touch targets around 22-34 px icons, placed from the View transform, safe-area aware; the fullscreen slot collapses where unsupported).
+- **Stick**: spawns under the first finger anywhere; a tap (<=180 ms, <10 px) or any second finger fires; radius 11% of the short side (min 44 px); response curve ^1.6 with a 60 ms velocity ease; the base follows the thumb past the radius.
+- **Tilt**: gravity-vector steering (`src/input/gravity.ts`), independent of screen axes. Optional 3-step calibration (neutral / full left / full right) stored as `tiltCal`; otherwise automatic from the screen angle with neutral taken at the level's serve.
+- **Pause**: RESUME + tile grid (2x2 portrait, 4x1 landscape) with an in-card quit confirm. Settings: sticky header with CONTROLS / SOUND / GRAPHICS tabs and a sticky DONE footer.

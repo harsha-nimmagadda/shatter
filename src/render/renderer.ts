@@ -42,6 +42,7 @@ import {
 } from './powerVisuals';
 import { Shake } from './shake';
 import { QUALITY_NAMES } from '../game/quality';
+import { DEFAULT_HUD, type HudLayout } from '../game/hud';
 import { Sprite, SpriteCache } from './sprite';
 
 const W = CONFIG.width;
@@ -86,8 +87,8 @@ export class Renderer {
   beat = 0;
   /** False while a DOM menu covers the game (hides the canvas status sign). */
   showStatus = true;
-  /** Extra logical px kept clear at the top right (fullscreen HUD button). */
-  hudRightInset = 0;
+  /** Top HUD band slots (pause | score | level | hearts | fullscreen), shared with the DOM buttons. */
+  hud: HudLayout = DEFAULT_HUD;
   /** HUD level label such as 'LV 4' (empty hides it). */
   levelLabel = '';
   private readonly cache = new SpriteCache(600);
@@ -860,9 +861,11 @@ export class Renderer {
     }
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.font = font(13, false);
+    const hud = this.hud;
+    const cy = hud.cy;
+    ctx.font = font(11, false);
     ctx.fillStyle = C.cyan;
-    ctx.fillText('SCORE', 16, 22);
+    ctx.fillText('SCORE', hud.scoreX, cy - 12);
     const counting = si < target;
     if (counting) {
       ctx.font = font(27);
@@ -870,10 +873,10 @@ export class Renderer {
       ctx.lineWidth = 6;
       ctx.globalAlpha = 0.45;
       ctx.strokeStyle = C.pink;
-      ctx.strokeText(this.scoreText, 72, 21);
+      ctx.strokeText(this.scoreText, hud.scoreX, cy + 6);
       ctx.globalAlpha = 1;
       ctx.fillStyle = C.white;
-      ctx.fillText(this.scoreText, 72, 21);
+      ctx.fillText(this.scoreText, hud.scoreX, cy + 6);
     } else {
       // Settled score: baked once per value instead of stroke+fill text every frame.
       if (this.scoreSprite === null || this.scoreSpriteText !== this.scoreText || this.scoreSpriteScale !== this.pixelScale) {
@@ -894,31 +897,31 @@ export class Renderer {
         this.scoreSpriteText = txt;
         this.scoreSpriteScale = this.pixelScale;
       }
-      this.scoreSprite.draw(ctx, 72, 4);
+      this.scoreSprite.draw(ctx, hud.scoreX, cy - 11);
     }
     if (this.levelLabel) {
       ctx.textAlign = 'center';
       ctx.font = font(17);
       ctx.fillStyle = C.yellow;
-      ctx.fillText(this.levelLabel, 262, 22);
+      ctx.fillText(this.levelLabel, W / 2, cy);
       ctx.textAlign = 'left';
     }
-    // Lives as neon hearts, clear of the DOM pause (and fullscreen) buttons at the top right.
+    // Lives as neon hearts in their own slot, left of the fullscreen button.
     const kf = this.key(Ns.Misc, 'heart');
     const heart = this.cache.get(kf) ?? this.cache.build(kf, HEART, HEART, 6, (g, px) => renderHeart(g, HEART, px));
-    const right = W - 70 - this.hudRightInset;
+    const right = hud.livesRight;
     const lives = world.lives;
     if (lives <= 6) {
       for (let i = 0; i < lives; i++) {
         const beatScale = i === lives - 1 ? 1 + 0.08 * this.beat : 1;
-        heart.drawCentered(ctx, right - (i + 0.5) * 23, 21, beatScale);
+        heart.drawCentered(ctx, right - (i + 0.5) * 23, cy, beatScale);
       }
     } else {
-      heart.drawCentered(ctx, right - 12, 21);
+      heart.drawCentered(ctx, right - 12, cy);
       ctx.font = font(20);
       ctx.textAlign = 'right';
       ctx.fillStyle = C.white;
-      ctx.fillText(`${lives}×`, right - 28, 22);
+      ctx.fillText(`${lives}×`, right - 28, cy + 1);
       ctx.textAlign = 'left';
     }
     // Combo (hidden at 1x) under the hearts.
@@ -952,7 +955,7 @@ export class Renderer {
         this.comboSpriteScale = this.pixelScale;
       }
       ctx.save();
-      ctx.translate(W - 66, this.hudRightInset > 0 ? 62 : 49);
+      ctx.translate(hud.edgeRight, cy + 28);
       ctx.scale(pop, pop);
       this.comboSprite.draw(ctx, -190, -20);
       ctx.restore();
@@ -962,8 +965,8 @@ export class Renderer {
 
   /** Second HUD row: active timed effects as icons with a shrinking ring in the category colour. */
   private drawEffectsRow(ctx: CanvasRenderingContext2D, world: World, time: number): void {
-    const cy = 47;
-    let x = 28;
+    const cy = this.hud.cy + 27;
+    let x = this.hud.scoreX + 14;
     ctx.lineCap = 'round';
     for (let i = 0; i < EFFECT_NAMES.length; i++) {
       const name = EFFECT_NAMES[i];

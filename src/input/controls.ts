@@ -5,7 +5,8 @@ import { GamepadInput } from './gamepad';
 import { KeyboardInput } from './keyboard';
 import { Latch } from './latch';
 import { PointerInput } from './pointer';
-import { StickInput, stickMoveAxis } from './stick';
+import { STICK_HINT_KEY, StickInput, stickMoveAxis } from './stick';
+import { readStore, writeStore } from '../ui/storage';
 import { loadSettings, type ControlSettings } from './settings';
 import { TiltInput } from './tilt';
 
@@ -30,6 +31,7 @@ export class Controls {
   private readonly pause = new Latch();
   private tiltX: number | null = null;
   private paddleXNow = CONFIG.width / 2;
+  private stickHintSeen = false;
 
   constructor(canvas: HTMLCanvasElement, view: View) {
     this.tilt = new TiltInput(this.settings);
@@ -38,7 +40,12 @@ export class Controls {
     this.pointer.playfieldW = CONFIG.width;
     this.pointer.getSensitivity = () => this.settings.dragSensitivity;
     this.pointer.getPaddleX = () => this.paddleXNow;
-    this.stick = new StickInput(canvas, view, document.getElementById('ui') ?? document.body);
+    this.stick = new StickInput(canvas, document.getElementById('ui') ?? document.body);
+    this.stickHintSeen = readStore(STICK_HINT_KEY) !== null;
+    this.stick.onFirstTouch = () => {
+      this.stickHintSeen = true;
+      writeStore(STICK_HINT_KEY, '1');
+    };
   }
 
   /** Tell Controls where the paddle is, for relative drag. */
@@ -52,6 +59,7 @@ export class Controls {
     this.pointer.touchSteers = this.settings.mode === 'drag';
     this.pointer.touchEnabled = this.settings.mode !== 'stick';
     this.stick.setEnabled(this.settings.mode === 'stick');
+    this.stick.update(dt);
     this.tiltX =
       this.settings.mode === 'tilt' ? this.tilt.paddleX(dt, this.settings, CONFIG.width, CONFIG.paddleW) : null;
     // Move source events into the shared latches so nothing is lost between frames.
@@ -85,9 +93,9 @@ export class Controls {
     this.stick.cancel();
   }
 
-  /** Faint idle stick hint (during serve). */
+  /** Faint idle stick hint (during serve); the caption shows only until the stick has been used once. */
   setStickGhost(on: boolean): void {
-    this.stick.setGhost(on);
+    this.stick.setGhost(on, on && !this.stickHintSeen);
   }
 
   dispose(): void {

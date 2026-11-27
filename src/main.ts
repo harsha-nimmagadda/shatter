@@ -14,6 +14,7 @@ import { clearRun, continueRun, loadRun, retryLevel, saveRun, startRun, winLevel
 import { QUALITY_DPR, QualityGovernor, effectiveQuality } from './game/quality';
 import { introHint, takeFirstRun } from './game/hints';
 import { isFullscreenSupported } from './game/fullscreen';
+import { computeHudLayout, readSafeInsets } from './game/hud';
 import { WakeLock, shouldHoldWakeLock } from './game/wakeLock';
 import { SoundManager } from './audio/sound';
 import { panFromX, soundsForEvents } from './audio/events';
@@ -55,8 +56,6 @@ const mkWorld = (level: Level, o: { lives?: number; score?: number; levelIndex?:
 let world = mkWorld(debugLevel);
 const renderer = new Renderer();
 renderer.loadLevel(world);
-// Make room for the fullscreen HUD button next to the pause button.
-renderer.hudRightInset = isFullscreenSupported() ? 52 : 0;
 /** Ball positions before the last step, for render interpolation. */
 const prev: XY[] = snapshotBalls(world.balls, []);
 
@@ -98,6 +97,8 @@ function resetFor(w: World): void {
   ui.closePause();
   menus.close();
   controls.clearFire();
+  // Automatic tilt neutral = how the phone is held as this level's serve starts.
+  controls.tilt.armNeutral();
 }
 
 function startLevel(r: RunState): void {
@@ -132,6 +133,24 @@ function applyQuality(): void {
 
 applyQuality();
 const AUTO_MS = autoPlay ? 1500 : 0;
+
+// Top HUD band: one layout shared by the canvas (score / level / hearts) and the DOM buttons (pause / fullscreen).
+const fsSupported = isFullscreenSupported();
+let hudVersion = -1;
+function layoutHud(): void {
+  if (view.version === hudVersion) return;
+  hudVersion = view.version;
+  renderer.hud = computeHudLayout({
+    cssW: view.cssWidth,
+    cssH: view.cssHeight,
+    scale: view.cssScale,
+    offsetX: view.offsetX,
+    offsetY: view.offsetY,
+    safe: readSafeInsets(),
+    fullscreenSupported: fsSupported,
+  });
+  ui.layoutHud(renderer.hud);
+}
 
 function showLevelSelect(onBack: () => void): void {
   menus.showLevelSelect(progress, { onPick: (i) => startLevel(startRun(i)), onBack });
@@ -221,10 +240,14 @@ function showEndCard(): void {
   });
 }
 
+let introWas = false;
 function update(dt: number): void {
   if (!ui.started() || ui.paused()) return;
   const inp = controls.input();
-  if (menus.introActive() && inp.fire) {
+  const intro = menus.introActive();
+  if (introWas && !intro) controls.tilt.armNeutral(); // the serve starts now: take the held position as neutral
+  introWas = intro;
+  if (intro && inp.fire) {
     menus.dismissIntro();
     inp.fire = false;
   }
@@ -300,6 +323,7 @@ function render(alpha: number): void {
   controls.setStickGhost(ui.started() && !ui.paused() && world.status === 'serve');
   const c = ctx as CanvasRenderingContext2D;
   if (view.pixelScale <= 0) return; // canvas not laid out yet
+  layoutHud();
   view.begin(c);
   if (gallery) {
     drawGallery(c, view.pixelScale, now / 1000);

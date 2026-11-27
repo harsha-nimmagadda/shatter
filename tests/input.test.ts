@@ -5,45 +5,24 @@ import { keyboardAxis } from '../src/input/keyboard';
 import { isTap, relativeDragX } from '../src/input/pointer';
 import { parseSettings } from '../src/input/settings';
 import { buildInput } from '../src/input/controls';
-import { screenTiltAngle, smooth, tiltRangeDeg, tiltToPaddleX } from '../src/input/tilt';
+import { smooth } from '../src/input/tilt';
+import { axisToPaddleX, tiltRangeDeg } from '../src/input/gravity';
 
 const W = 540;
 const PW = 96;
 
-describe('tilt', () => {
+describe('tilt mapping', () => {
   it('tiltRangeDeg endpoints', () => {
     expect(tiltRangeDeg(1)).toBeCloseTo(40);
     expect(tiltRangeDeg(10)).toBeCloseTo(10);
     expect(tiltRangeDeg(5.5)).toBeCloseTo(25);
   });
-  it('neutral maps to centre', () => {
-    expect(tiltToPaddleX(7, 7, 5, false, W, PW)).toBe(W / 2);
-  });
-  it('full range reaches the wall, beyond is clamped', () => {
-    const r = tiltRangeDeg(5);
-    expect(tiltToPaddleX(r, 0, 5, false, W, PW)).toBeCloseTo(W - PW / 2);
-    expect(tiltToPaddleX(-r, 0, 5, false, W, PW)).toBeCloseTo(PW / 2);
-    expect(tiltToPaddleX(r * 3, 0, 5, false, W, PW)).toBe(W - PW / 2);
-    expect(tiltToPaddleX(-r * 3, 0, 5, false, W, PW)).toBe(PW / 2);
-  });
-  it('dead zone of 1 degree', () => {
-    expect(tiltToPaddleX(0.9, 0, 5, false, W, PW)).toBe(W / 2);
-    expect(tiltToPaddleX(-1, 0, 5, false, W, PW)).toBe(W / 2);
-    expect(tiltToPaddleX(2, 0, 5, false, W, PW)).toBeGreaterThan(W / 2);
-  });
-  it('invert flips direction', () => {
-    const a = tiltToPaddleX(10, 0, 5, false, W, PW);
-    const b = tiltToPaddleX(10, 0, 5, true, W, PW);
-    expect(a - W / 2).toBeCloseTo(W / 2 - b);
-    expect(b).toBeLessThan(W / 2);
-  });
-  it('screenTiltAngle per orientation', () => {
-    const e = { beta: 10, gamma: 20 };
-    expect(screenTiltAngle(e, 0)).toBe(20);
-    expect(screenTiltAngle(e, 180)).toBe(-20);
-    expect(screenTiltAngle(e, 90)).toBe(10);
-    expect(screenTiltAngle(e, 270)).toBe(-10);
-    expect(screenTiltAngle(e, -90)).toBe(-10);
+  it('axisToPaddleX: centre, walls, clamped', () => {
+    expect(axisToPaddleX(0, W, PW)).toBe(W / 2);
+    expect(axisToPaddleX(1, W, PW)).toBeCloseTo(W - PW / 2);
+    expect(axisToPaddleX(-1, W, PW)).toBeCloseTo(PW / 2);
+    expect(axisToPaddleX(3, W, PW)).toBe(W - PW / 2);
+    expect(axisToPaddleX(-3, W, PW)).toBe(PW / 2);
   });
   it('smooth converges and is frame-rate independent', () => {
     let v = 0;

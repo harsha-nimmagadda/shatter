@@ -27,6 +27,7 @@ export class View {
   private cssH = 0;
   private dpr = 1;
   private dprCap = MAX_DPR;
+  private ver = 0;
   private fit: Fit = { scale: 1, offsetX: 0, offsetY: 0 };
   private readonly onResize = (): void => this.resize();
 
@@ -43,6 +44,7 @@ export class View {
     this.canvas.width = Math.round(this.cssW * this.dpr);
     this.canvas.height = Math.round(this.cssH * this.dpr);
     this.fit = fitPlayfield(this.cssW, this.cssH);
+    this.ver++;
   }
 
   /** Caps the canvas device-pixel ratio (adaptive quality); resizes only when the cap actually changes it. */
@@ -50,6 +52,25 @@ export class View {
     if (cap === this.dprCap) return;
     this.dprCap = cap;
     this.resize();
+  }
+
+  /** Bumps on every resize; lets callers cache work derived from the transform. */
+  get version(): number {
+    return this.ver;
+  }
+
+  /** Canvas CSS size and the playfield's offset inside it. */
+  get cssWidth(): number {
+    return this.cssW;
+  }
+  get cssHeight(): number {
+    return this.cssH;
+  }
+  get offsetX(): number {
+    return this.fit.offsetX;
+  }
+  get offsetY(): number {
+    return this.fit.offsetY;
   }
 
   /** CSS pixels per logical unit. */

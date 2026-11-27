@@ -76,17 +76,22 @@ export class Nav {
       const ddx = q.left + q.width / 2 - cx;
       const ddy = q.top + q.height / 2 - cy;
       let prim: number;
-      let perp: number;
+      let gap: number;
+      let off: number;
       if (dx !== 0) {
         if (ddx * dx <= 4) continue;
         prim = Math.abs(ddx);
-        perp = Math.abs(ddy);
+        gap = Math.max(0, Math.max(q.top - r.bottom, r.top - q.bottom)); // 0 when they share a row
+        off = Math.abs(ddy);
       } else {
         if (ddy * dy <= 4) continue;
         prim = Math.abs(ddy);
-        perp = Math.abs(ddx);
+        gap = Math.max(0, Math.max(q.left - r.right, r.left - q.right)); // 0 when they share a column
+        off = Math.abs(ddx);
       }
-      const s = prim + perp * 2.5;
+      // Prefer the nearest item whose extent overlaps ours across the move (so wide sliders and narrow switches
+      // below each other are both reachable); centre offset only breaks ties.
+      const s = prim + gap * 2.5 + off * 0.05;
       if (s < bestScore) {
         bestScore = s;
         best = it;

@@ -8,3 +8,5 @@ coverage
 tools/comfy/out/
 tools/comfy/out_draft/
 revamp-idea/
+sim-results/
+tools/sim/.build/

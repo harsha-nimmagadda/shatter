@@ -2,6 +2,16 @@ import { enterImmersive } from '../game/fullscreen';
 import type { Controls } from '../input/controls';
 import { saveSettings } from '../input/settings';
 import type { SoundManager } from '../audio/sound';
+import type { Nav } from './nav';
+
+export interface UiHooks {
+  /** PLAY on the title. */
+  onPlay(): void;
+  /** LEVELS on the title. */
+  onLevels(): void;
+  /** LEVELS on the pause overlay. */
+  onPauseLevels(): void;
+}
 
 export interface ControlsUi {
   /** True once the start overlay has been dismissed. */
@@ -12,6 +22,12 @@ export interface ControlsUi {
   togglePause(): void;
   /** Pause automatically if playing (focus loss). */
   autoPause(): void;
+  /** Show the title overlay again (Back from level select). */
+  showTitle(): void;
+  /** Close the pause overlay if shown. */
+  closePause(): void;
+  /** Tell the UI an external menu (cards, level select) is open: game stays stopped, no auto-pause overlay. */
+  setExternalModal(open: boolean): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -25,11 +41,13 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-export function createControlsUi(root: HTMLElement, controls: Controls, sound?: SoundManager): ControlsUi {
+export function createControlsUi(root: HTMLElement, controls: Controls, sound?: SoundManager, hooks?: UiHooks, nav?: Nav): ControlsUi {
   const s = controls.settings;
   let started = false;
   let settingsOpen = false;
   let pauseShown = false;
+  let titleOpen = true;
+  let external = false;
 
   // ---- Audio: suspend while the pause overlay or a hidden tab stops the game ----
   const syncAudio = (): void => {
@@ -79,29 +97,50 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   });
   const tag = el('p', 'ui-tag', 'NEON BRICK BREAKER');
   const startBtn = el('button', 'ui-btn big', 'PLAY');
+  startBtn.dataset.primary = '1';
+  const levelsBtn = el('button', 'ui-btn mid', 'LEVELS');
   const tip = el('p', 'ui-tip', 'Catch the falling power-ups. Red spiky ones are trouble!');
-  start.append(logo, tag, startBtn, tip);
-  startBtn.addEventListener('click', async () => {
+  start.append(logo, tag, startBtn, levelsBtn, tip);
+  const choose = async (act: (() => void) | undefined): Promise<void> => {
     startBtn.disabled = true;
-    sound?.unlock();
-    sound?.playMusic(0);
-    void enterImmersive();
-    let hint = 'Drag anywhere to move · tap to launch';
-    if (s.mode === 'tilt') {
-      hint = (await tryTilt()) ? 'Tilt to move · tap to launch' : 'Tilt not available here, drag to move';
+    levelsBtn.disabled = true;
+    let hint = '';
+    if (!started) {
+      sound?.unlock();
+      sound?.playMusic(0);
+      void enterImmersive();
+      hint = 'Drag anywhere to move · tap to launch';
+      if (s.mode === 'tilt') {
+        hint = (await tryTilt()) ? 'Tilt to move · tap to launch' : 'Tilt not available here, drag to move';
+      }
     }
     start.remove();
+    titleOpen = false;
     started = true;
+    startBtn.disabled = false;
+    levelsBtn.disabled = false;
     controls.clearFire();
-    showHint(hint);
-  });
+    if (hint) showHint(hint);
+    act?.();
+  };
+  startBtn.addEventListener('click', () => void choose(hooks?.onPlay));
+  levelsBtn.addEventListener('click', () => void choose(hooks?.onLevels));
   root.appendChild(start);
+  nav?.register(start);
+  nav?.focusInitial(start);
 
   // ---- Pause overlay ----
   const pauseOv = el('div', 'ui-overlay');
   pauseOv.append(el('h1', 'ui-h', 'PAUSED'));
   const resumeBtn = el('button', 'ui-btn big', 'RESUME');
+  resumeBtn.dataset.primary = '1';
   pauseOv.append(resumeBtn);
+  if (hooks) {
+    const pauseLevels = el('button', 'ui-btn mid', 'LEVELS');
+    pauseLevels.addEventListener('click', () => hooks.onPauseLevels());
+    pauseOv.append(pauseLevels);
+  }
+  nav?.register(pauseOv);
   const hidePause = (): void => {
     if (!pauseShown) return;
     pauseShown = false;
@@ -110,9 +149,10 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     syncAudio();
   };
   const showPause = (): void => {
-    if (pauseShown || settingsOpen || !started) return;
+    if (pauseShown || settingsOpen || !started || titleOpen || external) return;
     pauseShown = true;
     root.appendChild(pauseOv);
+    nav?.focusInitial(pauseOv);
     syncAudio();
   };
   resumeBtn.addEventListener('click', hidePause);
@@ -302,12 +342,23 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
 
   return {
     started: () => started,
-    paused: () => settingsOpen || pauseShown,
+    paused: () => settingsOpen || pauseShown || titleOpen || external,
     togglePause: () => {
-      if (!started || settingsOpen) return;
+      if (!started || settingsOpen || titleOpen || external) return;
       if (pauseShown) hidePause();
       else showPause();
     },
     autoPause: showPause,
+    showTitle: () => {
+      if (titleOpen) return;
+      hidePause();
+      titleOpen = true;
+      root.appendChild(start);
+      nav?.focusInitial(start);
+    },
+    closePause: hidePause,
+    setExternalModal: (open) => {
+      external = open;
+    },
   };
 }

@@ -85,6 +85,8 @@ export class Renderer {
   beat = 0;
   /** False while a DOM menu covers the game (hides the canvas status sign). */
   showStatus = true;
+  /** HUD level label such as 'LV 4' (empty hides it). */
+  levelLabel = '';
   private readonly cache = new SpriteCache(600);
   private readonly bg = new Background();
   private readonly frame = new PlayFrame();
@@ -838,6 +840,13 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = C.white;
     ctx.fillText(this.scoreText, 72, 21);
+    if (this.levelLabel) {
+      ctx.textAlign = 'center';
+      ctx.font = font(17);
+      ctx.fillStyle = C.yellow;
+      ctx.fillText(this.levelLabel, 262, 22);
+      ctx.textAlign = 'left';
+    }
     // Lives as neon hearts, clear of the DOM gear button at the top right.
     const kf = this.key(Ns.Misc, 'heart');
     const heart = this.cache.get(kf) ?? this.cache.build(kf, HEART, HEART, 6, (g, px) => renderHeart(g, HEART, px));
@@ -933,7 +942,7 @@ export class Renderer {
     ctx.fillStyle = 'rgba(5,1,15,0.5)';
     ctx.fillRect(0, CONFIG.topWall, W, H - CONFIG.topWall);
     const won = st === 'won';
-    const s = won ? this.signSprite('STAGE CLEAR!', 'TAP TO PLAY AGAIN', C.gold, 50) : this.signSprite('GAME OVER', 'TAP TO RETRY', C.red, 56);
+    const s = won ? this.signSprite('STAGE CLEAR!', '', C.gold, 50) : this.signSprite('GAME OVER', '', C.red, 56);
     const bob = Math.sin(time * 3) * 4;
     s.drawCentered(ctx, W / 2, H / 2 - 20 + bob);
     if (won && !this.reducedFx) {

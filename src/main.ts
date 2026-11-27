@@ -1,12 +1,16 @@
 import './style.css';
 import { View } from './game/view';
 import { Loop } from './game/loop';
-import { LEVEL_1, POWER_TYPES, TEST_LEVELS, createWorld, drainEvents, step, type GameEvent, type PowerType, type World } from './engine';
+import { CAMPAIGN, LEVEL_1, POWER_TYPES, TEST_LEVELS, createWorld, drainEvents, step, type GameEvent, type Level, type PowerType, type World } from './engine';
 import { Controls } from './input/controls';
 import { Renderer } from './render/renderer';
 import { drawGallery } from './render/gallery';
 import { snapshotBalls, type XY } from './render/powerVisuals';
 import { createControlsUi } from './ui/controlsUi';
+import { Menus } from './ui/menus';
+import { Nav } from './ui/nav';
+import { loadProgress, recordWin, saveProgress } from './game/progress';
+import { retryLevel, startRun, winLevel, type RunState, type WinOutcome } from './game/run';
 import { SoundManager } from './audio/sound';
 import { panFromX, soundsForEvents } from './audio/events';
 
@@ -18,7 +22,8 @@ const view = new View(canvas);
 const controls = new Controls(canvas, view);
 const st = controls.settings;
 const sound = new SoundManager({ muted: st.muted, volume: st.volume, music: st.music, musicVolume: st.musicVolume });
-const ui = createControlsUi(document.getElementById('ui') as HTMLElement, controls, sound);
+const uiRoot = document.getElementById('ui') as HTMLElement;
+const nav = new Nav(uiRoot);
 let lastFrame = performance.now();
 
 // Debug URL params: ?level=<explosive|moving|regen|hidden|mixed>, ?power=<type>, ?drop=<0..1>, ?auto
@@ -31,27 +36,175 @@ const gallery = params.has('gallery');
 const dropParam = params.get('drop');
 const dropChance = dropParam !== null && dropParam !== '' && Number.isFinite(Number(dropParam)) ? Math.max(0, Math.min(1, Number(dropParam))) : undefined;
 
-const newWorld = (): World =>
-  createWorld(debugLevel, {
+const campaignParam = Number(params.get('campaign'));
+const campaignJump = params.has('campaign') && Number.isInteger(campaignParam) && campaignParam >= 1 && campaignParam <= CAMPAIGN.length ? campaignParam - 1 : -1;
+const testMode = campaignJump < 0 && params.has('level');
+
+const mkWorld = (level: Level, o: { lives?: number; score?: number; levelIndex?: number; featured?: PowerType } = {}): World =>
+  createWorld(level, {
     seed: (Date.now() ^ (Math.random() * 2 ** 32)) >>> 0,
+    ...o,
     ...(forcedPower ? { forcedPower } : {}),
     ...(dropChance !== undefined ? { dropChance } : {}),
   });
-let world = newWorld();
+let world = mkWorld(debugLevel);
 const renderer = new Renderer();
 renderer.loadLevel(world);
 /** Ball positions before the last step, for render interpolation. */
 const prev: XY[] = snapshotBalls(world.balls, []);
 
+// ---- Campaign flow ----
+let progress = loadProgress();
+let run: RunState | null = null;
+let inTest = false;
+let ended = false;
+let endAt = 0;
+let outcome: WinOutcome | null = null;
+let prevBest = 0;
+let levelsStarted = 0;
+
+const menus = new Menus(uiRoot, nav, () => controls.clearFire());
+const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
+const toTitle = (): void => {
+  menus.close();
+  ui.showTitle();
+};
+
+function resetFor(w: World): void {
+  world = w;
+  renderer.loadLevel(world);
+  snapshotBalls(world.balls, prev);
+  sound.duckMusic(false);
+  if (levelsStarted++ > 0) sound.nextTrack();
+  ended = false;
+  outcome = null;
+  ui.closePause();
+  menus.close();
+  controls.clearFire();
+}
+
+function startLevel(r: RunState): void {
+  run = r;
+  inTest = false;
+  const lv = CAMPAIGN[r.levelIndex];
+  resetFor(mkWorld(lv, { lives: r.startLives, score: r.startScore, levelIndex: r.levelIndex, ...(lv.featured ? { featured: lv.featured } : {}) }));
+  renderer.levelLabel = `LV ${r.levelIndex + 1}`;
+  menus.showIntro(r.levelIndex + 1, lv.name, lv.hint);
+}
+
+function startTest(): void {
+  run = null;
+  inTest = true;
+  resetFor(mkWorld(debugLevel));
+  renderer.levelLabel = '';
+}
+
+const AUTO_MS = autoPlay ? 1500 : 0;
+
+function showLevelSelect(onBack: () => void): void {
+  menus.showLevelSelect(progress, { onPick: (i) => startLevel(startRun(i)), onBack });
+}
+
+const ui = createControlsUi(
+  uiRoot,
+  controls,
+  sound,
+  {
+    onPlay: () => {
+      if (campaignJump >= 0) startLevel(startRun(campaignJump));
+      else if (testMode) startTest();
+      else if (progress.unlocked > 0) {
+        menus.showContinue(progress.unlocked + 1, {
+          onContinue: () => startLevel(startRun(progress.unlocked)),
+          onNew: () => startLevel(startRun(0)),
+          onBack: toTitle,
+        });
+      } else startLevel(startRun(0));
+    },
+    onLevels: () => showLevelSelect(toTitle),
+    onPauseLevels: () => showLevelSelect(() => menus.close()),
+  },
+  nav,
+);
+
+function showEndCard(): void {
+  const won = world.status === 'won';
+  if (inTest || !run) {
+    menus.card({
+      title: won ? 'STAGE CLEAR!' : 'GAME OVER',
+      tone: won ? 'win' : 'lose',
+      stats: [['Score', fmt(world.score)]],
+      buttons: [{ label: 'Play again', primary: true, onClick: startTest }],
+      autoMs: AUTO_MS,
+    });
+    return;
+  }
+  const r = run;
+  const lv = CAMPAIGN[r.levelIndex];
+  const levels = (): void => showLevelSelect(toTitle);
+  if (won && outcome) {
+    const o = outcome;
+    if (o.worldComplete) {
+      menus.card({
+        kicker: 'WORLD 1 COMPLETE',
+        title: 'You shattered it all!',
+        tone: 'win',
+        stars: o.stars,
+        stats: [['Level score', fmt(o.levelScore)], ['Total score', fmt(o.totalScore), true]],
+        buttons: [{ label: 'Levels', primary: true, onClick: levels }, { label: 'Title', onClick: toTitle }],
+        onBack: levels,
+      });
+      return;
+    }
+    const next = o.next as RunState;
+    menus.card({
+      kicker: `LEVEL ${r.levelIndex + 1} COMPLETE`,
+      title: lv.name,
+      tone: 'win',
+      stars: o.stars,
+      stats: [
+        ['Level score', fmt(o.levelScore), prevBest > 0 && o.levelScore > prevBest],
+        ['Total score', fmt(o.totalScore)],
+        ...(prevBest > 0 && o.levelScore > prevBest ? ([['New best!', '']] as [string, string][]) : []),
+      ],
+      buttons: [{ label: 'Next level', primary: true, onClick: () => startLevel(next) }, { label: 'Levels', onClick: levels }],
+      onBack: levels,
+      autoMs: AUTO_MS,
+    });
+    return;
+  }
+  menus.card({
+    kicker: `LEVEL ${r.levelIndex + 1}`,
+    title: 'GAME OVER',
+    subtitle: lv.name,
+    tone: 'lose',
+    stats: [['Level score', fmt(Math.max(0, world.score - r.startScore))], ['Total score', fmt(world.score)]],
+    buttons: [{ label: 'Retry level', primary: true, onClick: () => startLevel(retryLevel(r)) }, { label: 'Levels', onClick: levels }],
+    onBack: levels,
+    autoMs: AUTO_MS,
+  });
+}
+
 function update(dt: number): void {
   if (!ui.started() || ui.paused()) return;
   const inp = controls.input();
-  if ((world.status === 'won' || world.status === 'gameover') && inp.fire) {
-    world = newWorld();
-    renderer.loadLevel(world);
-    snapshotBalls(world.balls, prev);
-    sound.duckMusic(false);
-    sound.nextTrack();
+  if (menus.introActive() && inp.fire) {
+    menus.dismissIntro();
+    inp.fire = false;
+  }
+  if (!ended && (world.status === 'won' || world.status === 'gameover')) {
+    ended = true;
+    endAt = performance.now() + (world.status === 'won' ? 1400 : 900);
+    if (world.status === 'won' && run) {
+      const lv = CAMPAIGN[run.levelIndex];
+      outcome = winLevel(run, world.lives, world.score, lv.stars, CAMPAIGN.length);
+      prevBest = progress.best[run.levelIndex];
+      progress = recordWin(progress, run.levelIndex, outcome.stars, outcome.levelScore, CAMPAIGN.length);
+      saveProgress(progress);
+    }
+  }
+  if (ended && performance.now() >= endAt) {
+    showEndCard();
     return;
   }
   snapshotBalls(world.balls, prev);
@@ -98,7 +251,13 @@ function render(alpha: number): void {
   lastFrame = now;
   controls.setPaddleX(world.paddle.x);
   controls.poll(frameDt);
-  if (controls.pausePressed()) ui.togglePause();
+  nav.poll();
+  const pausePressed = controls.pausePressed();
+  if (nav.takeBackFlag()) {
+    /* Escape already went back in a menu */
+  } else if (pausePressed) ui.togglePause();
+  ui.setExternalModal(menus.open());
+  if (ui.paused()) controls.clearFire();
   const c = ctx as CanvasRenderingContext2D;
   view.begin(c);
   if (gallery) {
@@ -109,7 +268,7 @@ function render(alpha: number): void {
   renderer.shake.enabled = st.shake && !st.reducedFx;
   renderer.reduced = st.reducedFx;
   renderer.beat = sound.beat();
-  renderer.showStatus = ui.started();
+  renderer.showStatus = ui.started() && !ui.paused();
   renderer.setPixelScale(view.pixelScale);
   const events = drainEvents(world);
   if (events.length) {

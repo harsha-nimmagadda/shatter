@@ -4,12 +4,14 @@ import { createBot, type BotSkill } from './bots';
 export const SIM_DT = 1 / 120;
 export const MAX_GAME_SEC = 300;
 export const NATURAL = 'natural';
+/** Baseline with no capsules at all, to measure each power-up on its own. */
+export const NONE = 'none';
 
 export interface RunOpts {
   /** Identifier of the (level, power, bot) case; part of the bot RNG seed. */
   caseId: string;
   level: Level;
-  power: PowerType | typeof NATURAL;
+  power: PowerType | typeof NATURAL | typeof NONE;
   bot: BotSkill;
   seed: number;
   /** Game-time cap in seconds (default 300). */
@@ -60,9 +62,10 @@ const r4 = (v: number): number => Math.round(v * 1e4) / 1e4;
 
 export function runGame(opts: RunOpts): RunResult {
   const natural = opts.power === NATURAL;
+  const none = opts.power === NONE;
   const world = createWorld(opts.level, {
     seed: opts.seed,
-    ...(natural ? {} : { forcedPower: opts.power as PowerType, dropChance: C.dropChance }),
+    ...(none ? { dropChance: 0 } : natural ? {} : { forcedPower: opts.power as PowerType, dropChance: C.dropChance }),
   });
   const bot = createBot(opts.bot, hashSeed(`${opts.seed}|${opts.bot}|${opts.caseId}`));
   const cap = opts.maxTimeSec ?? MAX_GAME_SEC;

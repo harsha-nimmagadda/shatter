@@ -1,9 +1,9 @@
 import { LEVEL_1, POWER_TYPES, TEST_LEVELS, type Level } from '../engine';
 import { BOT_SKILLS, type BotSkill } from './bots';
-import { NATURAL, runGame, type RunResult } from './run';
+import { NATURAL, NONE, runGame, type RunResult } from './run';
 
 export const LEVELS: Record<string, Level> = { level1: LEVEL_1, ...TEST_LEVELS };
-export const POWER_CASES: readonly string[] = [NATURAL, ...POWER_TYPES];
+export const POWER_CASES: readonly string[] = [NONE, NATURAL, ...POWER_TYPES];
 
 export interface CaseSpec {
   id: string;
@@ -43,7 +43,7 @@ export function runCase(c: CaseSpec, seed: number, maxTimeSec?: number): RunResu
   return runGame({
     caseId: c.id,
     level,
-    power: c.power as (typeof POWER_TYPES)[number] | typeof NATURAL,
+    power: c.power as (typeof POWER_TYPES)[number] | typeof NATURAL | typeof NONE,
     bot: c.bot,
     seed,
     ...(maxTimeSec !== undefined ? { maxTimeSec } : {}),

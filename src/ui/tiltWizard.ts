@@ -1,5 +1,6 @@
 import { Calibrator } from '../input/calibration';
 import type { TiltInput } from '../input/tilt';
+import { enter, leave } from './motion';
 import type { Nav } from './nav';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -61,6 +62,7 @@ export function runTiltWizard(root: HTMLElement, nav: Nav | undefined, tilt: Til
     const ready = el('button', 'ui-btn mid primary', 'READY');
     ready.dataset.primary = '1';
     const skip = el('button', 'ui-btn small', skipLabel);
+    skip.dataset.sfx = 'back';
     const btns = el('div', 'ui-card-btns');
     btns.append(ready, skip);
     text.append(title, sub, live, msg, btns);
@@ -76,7 +78,7 @@ export function runTiltWizard(root: HTMLElement, nav: Nav | undefined, tilt: Til
       if (finished) return;
       finished = true;
       cancelAnimationFrame(raf);
-      ov.remove();
+      void leave(ov);
       resolve(r);
     };
 
@@ -120,7 +122,7 @@ export function runTiltWizard(root: HTMLElement, nav: Nav | undefined, tilt: Til
         finished = true;
         tilt.setCalibration(cal.result);
         window.setTimeout(() => {
-          ov.remove();
+          void leave(ov);
           resolve('saved');
         }, 1000);
         return;
@@ -136,6 +138,7 @@ export function runTiltWizard(root: HTMLElement, nav: Nav | undefined, tilt: Til
     skip.addEventListener('click', () => close('skipped'));
     nav?.register(ov, () => close('skipped'));
     root.appendChild(ov);
+    void enter(ov);
     render();
     nav?.focusInitial(ov);
     raf = requestAnimationFrame(tick);

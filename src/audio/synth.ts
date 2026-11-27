@@ -280,6 +280,69 @@ export const SFX: Record<string, { tones: Tone[]; fx?: FxOpts }> = {
     ],
   },
   click: { tones: [{ dur: 0.035, wave: 'sq25', f0: 1320, vol: 0.4, curve: 2 }] },
+  // ---- UI: same chip palette, short and soft so menus never fight the music ----
+  ui_tap: {
+    tones: [
+      { dur: 0.06, wave: 'sq25', f0: N('G5'), f1: N('C6'), vol: 0.45, curve: 1.5 },
+      { t: 0.03, dur: 0.05, wave: 'sine', f0: N('C7'), vol: 0.18, curve: 2 },
+    ],
+  },
+  ui_confirm: {
+    tones: [
+      { dur: 0.07, wave: 'sq25', f0: N('C6'), vol: 0.42, curve: 1.2 },
+      { t: 0.06, dur: 0.16, wave: 'sq25', f0: N('G6'), vol: 0.42, curve: 1.2 },
+      { t: 0.06, dur: 0.12, wave: 'sine', f0: N('C7'), vol: 0.2, curve: 2 },
+    ],
+    fx: { echo: [0.07, 0.3, 0.25] },
+  },
+  ui_back: {
+    tones: [
+      { dur: 0.06, wave: 'sq25', f0: N('G5'), vol: 0.4, curve: 1.3 },
+      { t: 0.055, dur: 0.11, wave: 'sq25', f0: N('C5'), vol: 0.4, curve: 1.4 },
+    ],
+  },
+  ui_toggle: {
+    tones: [
+      { dur: 0.045, wave: 'sq50', f0: 880, f1: 1320, vol: 0.32, curve: 1.5 },
+      { t: 0.04, dur: 0.05, wave: 'sine', f0: 1760, vol: 0.22, curve: 2 },
+    ],
+  },
+  ui_tab: { tones: [{ dur: 0.045, wave: 'tri', f0: 1046, f1: 784, vol: 0.55, curve: 2.2 }] },
+  ui_locked: {
+    tones: [
+      { dur: 0.17, wave: 'sq50', f0: 130, vol: 0.28, vib: [0.5, 28], curve: 0.8 },
+      { dur: 0.14, wave: 'tri', f0: 196, f1: 110, vol: 0.35, curve: 1 },
+    ],
+    fx: { crush: 20 },
+  },
+  ui_whoosh: {
+    tones: [
+      { dur: 0.3, wave: 'hiss', f0: 500, f1: 6500, vol: 0.32, curve: 1.1, attack: 0.09 },
+      { dur: 0.26, wave: 'sine', f0: 220, f1: 880, vol: 0.14, curve: 1.2, attack: 0.07 },
+    ],
+  },
+  ui_tick: { tones: [{ dur: 0.03, wave: 'sq12', f0: N('A6'), vol: 0.4, curve: 2 }] },
+  ui_count: {
+    tones: [
+      { dur: 0.12, wave: 'sq25', f0: N('A5'), vol: 0.5, curve: 1.2 },
+      { dur: 0.14, wave: 'tri', f0: N('A3'), vol: 0.6, curve: 1.3 },
+    ],
+  },
+  ui_go: {
+    tones: [
+      { dur: 0.09, wave: 'sq25', f0: N('E6'), vol: 0.45, curve: 1 },
+      { t: 0.08, dur: 0.26, wave: 'sq25', f0: N('A6'), vol: 0.45, curve: 1 },
+      { t: 0.08, dur: 0.2, wave: 'tri', f0: N('A3'), vol: 0.5, curve: 1 },
+    ],
+    fx: { echo: [0.09, 0.3, 0.3] },
+  },
+  ui_total: {
+    tones: [
+      { dur: 0.42, wave: 'sq25', f0: N('C6'), vol: 0.45, arp: [0, 7, 12], arpRate: 22, curve: 0.8 },
+      { dur: 0.4, wave: 'tri', f0: N('C3'), vol: 0.6, curve: 1 },
+    ],
+    fx: { echo: [0.1, 0.3, 0.3] },
+  },
   staple: { tones: [{ dur: 0.08, wave: 'sq25', f0: 1700, f1: 420, vol: 0.35, curve: 1.2 }] },
   cliploose: {
     tones: [
@@ -345,6 +408,8 @@ export interface Song {
   chords: readonly (readonly [string, readonly number[]])[];
   /** Lead melody per bar: "E5:4 A5:2 R:2 ..." (durations in 16ths, R = rest). */
   lead: readonly string[];
+  /** Calm arrangement (menus): held bass, soft 8th arpeggio, no kick/snare, sine-ish lead. */
+  calm?: boolean;
 }
 
 /** Original tunes written for Shatter. */
@@ -395,7 +460,32 @@ export const SONGS: readonly Song[] = [
       'B5:8 D#6:4 F#6:4',
     ],
   },
+  {
+    name: 'Neon Lounge',
+    bpm: 88,
+    calm: true,
+    chords: [
+      ['D3', [0, 3, 7, 10]], ['A#2', [0, 4, 7, 11]], ['F3', [0, 4, 7, 11]], ['C3', [0, 4, 7, 14]],
+      ['G2', [0, 3, 7, 10]], ['D3', [0, 3, 7, 10]], ['A2', [0, 4, 7, 10]], ['D3', [0, 3, 7, 14]],
+    ],
+    lead: [
+      'A4:6 C5:2 D5:8',
+      'D5:4 F5:4 A4:8',
+      'C5:6 A4:2 F4:4 A4:4',
+      'G4:4 C5:4 E5:8',
+      'D5:6 A#4:2 G4:8',
+      'A4:4 D5:4 F5:4 E5:4',
+      'E5:6 C#5:2 A4:4 R:4',
+      'D5:8 A4:4 R:4',
+    ],
+  },
 ];
+
+/** The menu loop is the last song; gameplay tracks are the ones before it. */
+export const MENU_SONG = SONGS.length - 1;
+export const GAME_SONGS = MENU_SONG;
+/** Render order: the menu loop first (it is heard first), then the gameplay tracks. */
+export const SONG_ORDER: readonly number[] = [MENU_SONG, ...Array.from({ length: GAME_SONGS }, (_, i) => i)];
 
 /** Parses a lead bar into [noteName | null, sixteenths] pairs; throws unless it fills exactly 16. */
 export function parseBar(bar: string): [string | null, number][] {
@@ -429,6 +519,23 @@ export function renderSong(song: Song, sr: number): [Float32Array, Float32Array]
   song.chords.forEach(([root, tones], bar) => {
     const t0 = bar * 16 * step;
     const rootHz = noteHz(root);
+    if (song.calm) {
+      // Held triangle bass (root, then the fifth), a soft sine pad on the chord, gentle 8th arpeggio, ghost hats only.
+      add({ t: t0, dur: step * 7.6, wave: 'tri', f0: rootHz, vol: 0.5, curve: 0.5 });
+      add({ t: t0 + step * 8, dur: step * 7.6, wave: 'tri', f0: rootHz * Math.pow(2, 7 / 12), vol: 0.42, curve: 0.5 });
+      for (const semi of tones) add({ t: t0, dur: step * 15.5, wave: 'sine', f0: rootHz * Math.pow(2, (semi + 12) / 12), vol: 0.07, curve: 0.2, attack: 0.25, pan: semi % 2 ? 0.4 : -0.4 });
+      for (let k = 0; k < 8; k++) {
+        const semi = tones[(k * 3) % tones.length] + 24 + (k % 4 === 3 ? 12 : 0);
+        add({ t: t0 + k * 2 * step, dur: step * 2.2, wave: 'tri', f0: rootHz * Math.pow(2, semi / 12), vol: 0.1, curve: 1.1, pan: k % 2 ? 0.45 : -0.45 });
+      }
+      for (let k = 2; k < 16; k += 4) add({ t: t0 + k * step, dur: 0.03, wave: 'hiss', f0: 9000, vol: 0.06, curve: 2, pan: 0.3 });
+      let cs = 0;
+      for (const [note, d] of parseBar(song.lead[bar])) {
+        if (note) addTone(lead, null, sr, { t: t0 + cs * step, dur: d * step * 0.97, wave: 'sine', f0: noteHz(note), vol: 0.26, curve: 0.5, vib: [0.14, 5], attack: 0.03 }, true, 5);
+        cs += d;
+      }
+      return;
+    }
     // Bass: driving 8ths, root / octave / fifth.
     const bassPat = [0, 0, 12, 0, 0, 12, 7, 12];
     bassPat.forEach((semi, k) => add({ t: t0 + k * 2 * step, dur: step * 1.8, wave: 'tri', f0: rootHz * Math.pow(2, semi / 12), vol: 0.5, curve: 0.4 }));

@@ -1,5 +1,5 @@
 import { PlayLimiter } from './limiter';
-import { SFX, SONGS, renderSfx, renderSong, songSeconds } from './synth';
+import { GAME_SONGS, MENU_SONG, SFX, SONGS, SONG_ORDER, renderSfx, renderSong, songSeconds } from './synth';
 
 export interface PlayOpts {
   /** 0..1 multiplier on the per-id base volume. */
@@ -14,6 +14,7 @@ export const SOUND_IDS = [
   'paddle', 'wall', 'brick', 'break', 'steel', 'explode', 'launch', 'powerup', 'powerdown', 'laser',
   'eraser', 'lifelost', 'won', 'gameover', 'regen', 'reveal', 'net', 'click', 'shred',
   'staple', 'cliploose', 'clippop', 'snip', 'splash', 'paperclip', 'goldstar', 'redpen', 'combo', 'star',
+  'ui_tap', 'ui_confirm', 'ui_back', 'ui_toggle', 'ui_tab', 'ui_locked', 'ui_whoosh', 'ui_tick', 'ui_count', 'ui_go', 'ui_total',
 ] as const;
 
 /** Bounces are quieter than breaks. */
@@ -23,7 +24,18 @@ export const BASE_VOLUME: Record<string, number> = {
   net: 0.6, click: 0.35, shred: 0.4,
   staple: 0.22, cliploose: 0.45, clippop: 0.6, snip: 0.65, splash: 0.5, paperclip: 0.6, goldstar: 0.8, redpen: 0.7,
   combo: 0.55, star: 0.6,
+  ui_tap: 0.5, ui_confirm: 0.55, ui_back: 0.5, ui_toggle: 0.5, ui_tab: 0.45, ui_locked: 0.55, ui_whoosh: 0.4, ui_tick: 0.4,
+  ui_count: 0.7, ui_go: 0.7, ui_total: 0.7,
 };
+
+/** Seconds for the menu <-> gameplay music crossfade. */
+export const MUSIC_FADE = 0.6;
+export type MusicScene = 'menu' | 'game';
+
+/** Pure: which song plays in a scene (menus use the calm loop; gameplay cycles the other tracks). */
+export function songForScene(scene: MusicScene, gameTrack: number): number {
+  return scene === 'menu' ? MENU_SONG : ((gameTrack % GAME_SONGS) + GAME_SONGS) % GAME_SONGS;
+}
 
 const SFX_RATE = 44100;
 const MUSIC_RATE = 32000;
@@ -53,8 +65,15 @@ export class SoundManager {
   private raw: SynthResult = { sfx: {}, songs: [] };
   private limiter = new PlayLimiter(() => performance.now(), 35, 14);
   private suspended = false;
-  private song = 0;
+  private paused = false;
+  /** Song index currently playing (or wanted). */
+  private song = MENU_SONG;
+  private scene: MusicScene = 'menu';
+  private gameTrack = 0;
   private songSrc: AudioBufferSourceNode | null = null;
+  private songGain: GainNode | null = null;
+  /** Song index the current source plays. */
+  private playing = -1;
   private songStart = 0;
   private wantMusic = false;
   private duck = 1;
@@ -76,7 +95,7 @@ export class SoundManager {
         const d = e.data as { kind: string; sfx?: Record<string, Float32Array>; index?: number; l?: Float32Array; r?: Float32Array };
         if (d.kind === 'sfx' && d.sfx) this.raw.sfx = d.sfx;
         else if (d.kind === 'song' && d.l && d.r && d.index !== undefined) this.raw.songs[d.index] = [d.l, d.r];
-        if (d.kind === 'song' && d.index === SONGS.length - 1) w.terminate();
+        if (d.kind === 'song' && this.raw.songs.filter(Boolean).length >= SONGS.length) w.terminate();
         this.adopt();
       };
       w.onerror = () => {
@@ -97,8 +116,9 @@ export class SoundManager {
         for (let k = 0; k < 6 && i < ids.length; k++, i++) this.raw.sfx[ids[i]] = renderSfx(SFX[ids[i]].tones, SFX_RATE, SFX[ids[i]].fx);
       } else {
         const s = i - ids.length;
-        if (s >= SONGS.length) return;
-        this.raw.songs[s] = renderSong(SONGS[s], MUSIC_RATE);
+        if (s >= SONG_ORDER.length) return;
+        const idx = SONG_ORDER[s];
+        this.raw.songs[idx] = renderSong(SONGS[idx], MUSIC_RATE);
         i++;
       }
       this.adopt();
@@ -125,7 +145,7 @@ export class SoundManager {
       b.copyToChannel(pair[1] as Float32Array<ArrayBuffer>, 1);
       this.songBufs[i] = b;
     });
-    if (this.wantMusic && !this.songSrc) this.startSong();
+    if (this.wantMusic && this.playing !== this.song) this.switchSong();
   }
 
   setMuted(m: boolean): void {
@@ -151,7 +171,7 @@ export class SoundManager {
   private applyGain(): void {
     if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
     if (this.musicGain && this.ctx) {
-      const g = this.musicOn ? this.musicVolume * MUSIC_LEVEL * this.duck : 0;
+      const g = this.musicOn ? this.musicVolume * MUSIC_LEVEL * this.duck * (this.paused ? 0.3 : 1) : 0;
       this.musicGain.gain.setTargetAtTime(g, this.ctx.currentTime, 0.08);
     }
   }
@@ -209,58 +229,92 @@ export class SoundManager {
     if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume().catch(() => undefined);
   }
 
+  /** Game paused (pause overlay): gameplay sounds stop and the music drops to a murmur; UI sounds still play. */
+  setPaused(on: boolean): void {
+    if (on === this.paused) return;
+    this.paused = on;
+    this.applyGain();
+  }
+
   hasSample(id: string): boolean {
     return this.buffers.has(id);
   }
 
-  /** Starts (or switches to) background track `index` (wraps). */
-  playMusic(index = this.song): void {
-    this.song = ((index % SONGS.length) + SONGS.length) % SONGS.length;
+  /** Which music plays: the calm menu loop or the gameplay track. Crossfades (MUSIC_FADE) when it changes. */
+  setScene(scene: MusicScene): void {
     this.wantMusic = true;
-    this.stopSong();
-    this.startSong();
+    if (scene === 'menu') this.duckMusic(false);
+    const was = this.scene;
+    this.scene = scene;
+    const want = songForScene(scene, this.gameTrack);
+    if (this.songSrc && this.playing === want && was === scene) return;
+    this.song = want;
+    this.switchSong();
   }
 
-  /** Next track (called on every new game). */
+  get musicScene(): MusicScene {
+    return this.scene;
+  }
+
+  /** Next gameplay track (called on every new level); crossfades when the game scene is playing. */
   nextTrack(): void {
-    this.playMusic(this.song + 1);
+    this.gameTrack = (this.gameTrack + 1) % GAME_SONGS;
+    if (this.scene !== 'game') return;
+    this.song = songForScene('game', this.gameTrack);
+    this.switchSong();
   }
 
   /** Lowers the music (end screens) or restores it. */
   duckMusic(on: boolean): void {
-    this.duck = on ? 0.35 : 1;
+    const d = on ? 0.35 : 1;
+    if (d === this.duck) return;
+    this.duck = d;
     this.applyGain();
   }
 
-  private startSong(): void {
+  /** Fades the current source out and the wanted song in. A no-op until the song is rendered (adopt retries). */
+  private switchSong(): void {
     const ctx = this.ctx;
     const buf = this.songBufs[this.song];
     if (!ctx || !buf || !this.musicGain) return;
+    const t = ctx.currentTime;
+    const old = this.songSrc;
+    const oldGain = this.songGain;
+    if (old && oldGain) {
+      oldGain.gain.cancelScheduledValues(t);
+      oldGain.gain.setValueAtTime(oldGain.gain.value, t);
+      oldGain.gain.linearRampToValueAtTime(0, t + MUSIC_FADE);
+      try {
+        old.stop(t + MUSIC_FADE + 0.05);
+      } catch {
+        /* already stopped */
+      }
+      old.onended = () => {
+        old.disconnect();
+        oldGain.disconnect();
+      };
+    }
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.connect(this.musicGain);
-    this.songStart = ctx.currentTime + 0.05;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(1, t + MUSIC_FADE);
+    src.connect(g);
+    g.connect(this.musicGain);
+    this.songStart = t + 0.05;
     src.start(this.songStart);
     this.songSrc = src;
-  }
-
-  private stopSong(): void {
-    if (!this.songSrc) return;
-    try {
-      this.songSrc.stop();
-    } catch {
-      /* already stopped */
-    }
-    this.songSrc.disconnect();
-    this.songSrc = null;
+    this.songGain = g;
+    this.playing = this.song;
   }
 
   /** Visual beat pulse 0..1 (1 on each beat, decaying), 0 when no music is audible. */
   beat(): number {
     const ctx = this.ctx;
     if (!ctx || !this.songSrc || !this.musicOn || this.muted || this.musicVolume <= 0 || ctx.state !== 'running') return 0;
-    const s = SONGS[this.song];
+    const s = SONGS[this.playing];
+    if (!s) return 0;
     const t = ctx.currentTime - this.songStart;
     if (t < 0) return 0;
     const ph = ((t % songSeconds(s)) * s.bpm) / 60;
@@ -270,6 +324,7 @@ export class SoundManager {
 
   play(id: string, opts: PlayOpts = {}): void {
     if (this.muted || this.volume <= 0 || this.suspended) return;
+    if (this.paused && !id.startsWith('ui_')) return;
     const ctx = this.ctx;
     if (!ctx || !this.master || ctx.state !== 'running') return;
     const buf = this.buffers.get(id);

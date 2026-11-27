@@ -1,18 +1,25 @@
 import './style.css';
 import { View } from './game/view';
 import { Loop } from './game/loop';
-import { CAMPAIGN, LEVEL_1, POWER_TYPES, TEST_LEVELS, createWorld, drainEvents, step, type GameEvent, type Level, type PowerType, type World } from './engine';
+import { CAMPAIGN, CONFIG, LEVEL_1, POWER_TYPES, TEST_LEVELS, createWorld, drainEvents, step, type GameEvent, type Level, type PowerType, type World } from './engine';
 import { Controls } from './input/controls';
 import { Renderer } from './render/renderer';
 import { drawGallery } from './render/gallery';
 import { snapshotBalls, type XY } from './render/powerVisuals';
 import { createControlsUi } from './ui/controlsUi';
 import { Menus } from './ui/menus';
+import { CountdownView } from './ui/countdownView';
+import { UiFx, installUiFeedback } from './ui/feedback';
+import { enablePressStates, motionOff, setReduceMotion, wipe } from './ui/motion';
 import { Nav } from './ui/nav';
 import { loadProgress, recordWin, saveProgress } from './game/progress';
 import { clearRun, continueRun, loadRun, retryLevel, saveRun, startRun, winLevel, type RunState, type WinOutcome } from './game/run';
 import { QUALITY_DPR, QualityGovernor, effectiveQuality } from './game/quality';
 import { introHint, takeFirstRun } from './game/hints';
+import { Attract } from './game/attract';
+import { Countdown, needsCountdown } from './game/countdown';
+import { tallyRows } from './game/tally';
+import { pickTip } from './game/tips';
 import { isFullscreenSupported } from './game/fullscreen';
 import { computeHudLayout, readSafeInsets } from './game/hud';
 import { WakeLock, shouldHoldWakeLock } from './game/wakeLock';
@@ -29,6 +36,11 @@ const st = controls.settings;
 const sound = new SoundManager({ muted: st.muted, volume: st.volume, music: st.music, musicVolume: st.musicVolume });
 const uiRoot = document.getElementById('ui') as HTMLElement;
 const nav = new Nav(uiRoot);
+const fx = new UiFx(sound, st);
+installUiFeedback(uiRoot, fx);
+enablePressStates();
+setReduceMotion(st.reducedFx);
+nav.onBack = () => fx.play('back');
 let lastFrame = performance.now();
 const wakeLock = new WakeLock();
 
@@ -45,6 +57,9 @@ const dropChance = dropParam !== null && dropParam !== '' && Number.isFinite(Num
 const campaignParam = Number(params.get('campaign'));
 const campaignJump = params.has('campaign') && Number.isInteger(campaignParam) && campaignParam >= 1 && campaignParam <= CAMPAIGN.length ? campaignParam - 1 : -1;
 const testMode = campaignJump < 0 && params.has('level');
+const attractParam = Number(params.get('attract'));
+/** Seeds the title-screen demo: the same session seed always shows the same levels. */
+const attractSeed = params.has('attract') && Number.isFinite(attractParam) ? attractParam >>> 0 : (Date.now() ^ (Math.random() * 2 ** 32)) >>> 0;
 
 const mkWorld = (level: Level, o: { lives?: number; score?: number; levelIndex?: number; featured?: PowerType } = {}): World =>
   createWorld(level, {
@@ -53,8 +68,12 @@ const mkWorld = (level: Level, o: { lives?: number; score?: number; levelIndex?:
     ...(forcedPower ? { forcedPower } : {}),
     ...(dropChance !== undefined ? { dropChance } : {}),
   });
-let world = mkWorld(debugLevel);
+// The title-screen demo plays on the same world / renderer the game uses; a real level replaces it (see resetFor).
+const attract = new Attract(attractSeed);
+let inGame = false;
+let world: World = attract.world;
 const renderer = new Renderer();
+renderer.showHud = false;
 renderer.loadLevel(world);
 /** Ball positions before the last step, for render interpolation. */
 const prev: XY[] = snapshotBalls(world.balls, []);
@@ -69,17 +88,29 @@ let outcome: WinOutcome | null = null;
 let prevBest = 0;
 let levelsStarted = 0;
 
-const menus = new Menus(uiRoot, nav, () => controls.clearFire(), (i) => {
-  // Rising chime and a light tick as each star pops in.
-  sound.play('star', { pitch: [1, 1.26, 1.5][i] ?? 1.5 });
-  if (st.haptics && typeof navigator.vibrate === 'function') {
-    try {
-      navigator.vibrate(10 + i * 4);
-    } catch {
-      /* not allowed before a gesture */
-    }
-  }
+const menus = new Menus(uiRoot, nav, () => controls.clearFire(), fx, {
+  star: (i) => {
+    // Rising chime and a light tick as each star pops in.
+    sound.play('star', { pitch: [1, 1.26, 1.5][i] ?? 1.5 });
+    fx.haptic(10 + i * 4);
+  },
+  best: () => {
+    sound.play('goldstar');
+    fx.haptic(24);
+  },
 });
+const countdown = new Countdown();
+const countView = new CountdownView(uiRoot);
+let shownCount = 0;
+/** Screen jump with the neon wipe: the switch runs while the screen is covered (instant for the autopilot). */
+const go = (fn: () => void): void => {
+  if (autoPlay) {
+    fn();
+    return;
+  }
+  fx.play('whoosh');
+  void wipe(uiRoot, fn);
+};
 const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
 const toTitle = (): void => {
   menus.close();
@@ -87,6 +118,9 @@ const toTitle = (): void => {
 };
 
 function resetFor(w: World): void {
+  inGame = true;
+  countdown.cancel();
+  renderer.showHud = true;
   world = w;
   renderer.loadLevel(world);
   snapshotBalls(world.balls, prev);
@@ -95,7 +129,7 @@ function resetFor(w: World): void {
   ended = false;
   outcome = null;
   ui.closePause();
-  menus.close();
+  menus.close(true);
   controls.clearFire();
   // Automatic tilt neutral = how the phone is held as this level's serve starts.
   controls.tilt.armNeutral();
@@ -129,6 +163,12 @@ function applyQuality(): void {
   appliedLevel = level;
   renderer.quality = level;
   view.setDprCap(QUALITY_DPR[level]);
+  syncLite();
+}
+
+/** html[data-lite=1] drops the costly CSS extras (title backdrop blur) on the cheaper effect set. */
+function syncLite(): void {
+  document.documentElement.dataset.lite = st.reducedFx || renderer.quality > 0 ? '1' : '0';
 }
 
 applyQuality();
@@ -153,7 +193,22 @@ function layoutHud(): void {
 }
 
 function showLevelSelect(onBack: () => void): void {
-  menus.showLevelSelect(progress, { onPick: (i) => startLevel(startRun(i)), onBack });
+  menus.showLevelSelect(progress, { onPick: (i) => go(() => startLevel(startRun(i))), onBack });
+}
+
+/** Back to the title: a fresh demo level starts behind it. */
+function resumeAttract(): void {
+  inGame = false;
+  countdown.cancel();
+  menus.dismissIntro();
+  renderer.showHud = false;
+  renderer.levelLabel = '';
+  attract.restart();
+  world = attract.world;
+  renderer.loadLevel(world);
+  snapshotBalls(world.balls, prev);
+  ended = false;
+  outcome = null;
 }
 
 const ui = createControlsUi(
@@ -162,19 +217,23 @@ const ui = createControlsUi(
   sound,
   {
     onPlay: () => {
-      if (campaignJump >= 0) startLevel(startRun(campaignJump));
-      else if (testMode) startTest();
+      if (campaignJump >= 0) go(() => startLevel(startRun(campaignJump)));
+      else if (testMode) go(startTest);
       else {
         const resume = continueRun(loadRun(), progress.unlocked);
         if (resume) {
           const detail = `Lives ${resume.startLives} · Score ${fmt(resume.startScore)}`;
           menus.showContinue(
             resume.levelIndex + 1,
-            { onContinue: () => startLevel(resume), onNew: () => startLevel(startRun(0)), onBack: toTitle },
+            { onContinue: () => go(() => startLevel(resume)), onNew: () => go(() => startLevel(startRun(0))), onBack: toTitle },
             resume.startScore > 0 || resume.startLives !== 3 ? detail : undefined,
           );
-        } else startLevel(startRun(0));
+        } else go(() => startLevel(startRun(0)));
       }
+    },
+    onResume: () => {
+      // Closing the pause menu mid-rally: 3-2-1 before the ball moves again (a serve resumes at once).
+      if (inGame && needsCountdown(world.status) && !menus.introActive()) countdown.start();
     },
     onLevels: () => showLevelSelect(toTitle),
     onPauseLevels: () => showLevelSelect(() => menus.close()),
@@ -199,15 +258,19 @@ function showEndCard(): void {
   const levels = (): void => showLevelSelect(toTitle);
   if (won && outcome) {
     const o = outcome;
+    const tally = tallyRows(o.levelScore, world.lives, CONFIG.winLifeBonus);
     if (o.worldComplete) {
       menus.card({
         kicker: 'WORLD 1 COMPLETE',
         title: 'You shattered it all!',
         tone: 'win',
         stars: o.stars,
-        stats: [['Level score', fmt(o.levelScore)], ['Total score', fmt(o.totalScore), true]],
-        buttons: [{ label: 'Levels', primary: true, onClick: levels }, { label: 'Title', onClick: toTitle }],
+        tally,
+        stats: [['Total score', fmt(o.totalScore), true]],
+        ...(prevBest > 0 && o.levelScore > prevBest ? { badge: 'NEW BEST!' } : {}),
+        buttons: [{ label: 'Levels', primary: true, onClick: levels }, { label: 'Title', back: true, onClick: toTitle }],
         onBack: levels,
+        autoMs: AUTO_MS,
       });
       return;
     }
@@ -217,12 +280,11 @@ function showEndCard(): void {
       title: lv.name,
       tone: 'win',
       stars: o.stars,
-      stats: [
-        ['Level score', fmt(o.levelScore), prevBest > 0 && o.levelScore > prevBest],
-        ['Total score', fmt(o.totalScore)],
-        ...(prevBest > 0 && o.levelScore > prevBest ? ([['New best!', '']] as [string, string][]) : []),
-      ],
-      buttons: [{ label: 'Next level', primary: true, onClick: () => startLevel(next) }, { label: 'Levels', onClick: levels }],
+      tally,
+      stats: [['Run total', fmt(o.totalScore)]],
+      ...(prevBest > 0 && o.levelScore > prevBest ? { badge: 'NEW BEST!' } : {}),
+      buttons: [{ label: 'Next level', primary: true, onClick: () => go(() => startLevel(next)) }, { label: 'Levels', onClick: levels }],
+      next: { index: next.levelIndex },
       onBack: levels,
       autoMs: AUTO_MS,
     });
@@ -234,15 +296,39 @@ function showEndCard(): void {
     subtitle: lv.name,
     tone: 'lose',
     stats: [['Level score', fmt(Math.max(0, world.score - r.startScore))], ['Total score', fmt(world.score)]],
-    buttons: [{ label: 'Retry level', primary: true, onClick: () => startLevel(retryLevel(r)) }, { label: 'Levels', onClick: levels }],
+    tip: pickTip(st.mode, Math.random()),
+    buttons: [{ label: 'Retry level', primary: true, onClick: () => go(() => startLevel(retryLevel(r))) }, { label: 'Levels', onClick: levels }],
     onBack: levels,
     autoMs: AUTO_MS,
   });
 }
 
 let introWas = false;
+let reduceSynced = st.reducedFx;
+let musicScene: 'menu' | 'game' = 'menu';
+/** One fixed step of the title-screen demo (frozen while Reduce motion is on). */
+function updateAttract(dt: number): void {
+  if (motionOff()) return;
+  snapshotBalls(world.balls, prev);
+  if (attract.update(dt)) {
+    world = attract.world;
+    renderer.loadLevel(world);
+    snapshotBalls(world.balls, prev);
+  }
+}
+
 function update(dt: number): void {
+  if (!inGame) {
+    updateAttract(dt);
+    return;
+  }
   if (!ui.started() || ui.paused()) return;
+  if (countdown.active) {
+    // Resume countdown: the game stands still and taps do nothing.
+    controls.clearFire();
+    if (countdown.update(dt).finished) fx.play('go');
+    return;
+  }
   const inp = controls.input();
   const intro = menus.introActive();
   if (introWas && !intro) controls.tilt.armNeutral(); // the serve starts now: take the held position as neutral
@@ -318,9 +404,33 @@ function render(alpha: number): void {
     /* Escape already went back in a menu */
   } else if (pausePressed) ui.togglePause();
   ui.setExternalModal(menus.open());
+  if (inGame && ui.titleShown()) resumeAttract(); // quit to title: the demo takes over again
   if (ui.paused()) controls.clearFire();
-  wakeLock.update(shouldHoldWakeLock({ started: ui.started(), paused: ui.paused(), hidden: document.visibilityState === 'hidden', status: world.status }));
-  controls.setStickGhost(ui.started() && !ui.paused() && world.status === 'serve');
+  if (countdown.active && (ui.paused() || !inGame)) countdown.cancel();
+  if (countdown.active) {
+    const v = countdown.value;
+    if (v !== shownCount) {
+      shownCount = v;
+      countView.show(v);
+      fx.play('count');
+    }
+  } else if (shownCount !== 0) {
+    shownCount = 0;
+    countView.hide();
+  }
+  if (st.reducedFx !== reduceSynced) {
+    reduceSynced = st.reducedFx;
+    setReduceMotion(reduceSynced);
+    syncLite();
+  }
+  // Menus (and the title) get the calm loop; a level in play gets its gameplay track; both crossfade.
+  const scene = !inGame || menus.open() || ui.titleShown() ? 'menu' : 'game';
+  if (scene !== musicScene) {
+    musicScene = scene;
+    sound.setScene(scene);
+  }
+  wakeLock.update(shouldHoldWakeLock({ started: ui.started() && inGame, paused: ui.paused(), hidden: document.visibilityState === 'hidden', status: world.status }));
+  controls.setStickGhost(inGame && ui.started() && !ui.paused() && world.status === 'serve');
   const c = ctx as CanvasRenderingContext2D;
   if (view.pixelScale <= 0) return; // canvas not laid out yet
   layoutHud();
@@ -337,7 +447,7 @@ function render(alpha: number): void {
   renderer.showStatus = ui.started() && !ui.paused();
   renderer.setPixelScale(view.pixelScale);
   const events = drainEvents(world);
-  if (events.length) {
+  if (events.length && inGame) {
     for (const s of soundsForEvents(events, world)) {
       sound.play(s.id, { pan: panFromX(s.x, world.width), ...(s.volume !== undefined ? { volume: s.volume } : {}), ...(s.pitch !== undefined ? { pitch: s.pitch } : {}) });
     }

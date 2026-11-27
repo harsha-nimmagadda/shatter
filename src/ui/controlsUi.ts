@@ -5,6 +5,7 @@ import { hasSavedSettings, hasTouch, saveSettings } from '../input/settings';
 import type { SoundManager } from '../audio/sound';
 import type { HudLayout } from '../game/hud';
 import type { Nav } from './nav';
+import { enter, leave } from './motion';
 import { runTiltWizard } from './tiltWizard';
 
 export interface UiHooks {
@@ -14,6 +15,8 @@ export interface UiHooks {
   onLevels(): void;
   /** LEVELS on the pause overlay. */
   onPauseLevels(): void;
+  /** The pause menu was closed by the player (not by quitting): play continues. */
+  onResume?(): void;
 }
 
 export interface ControlsUi {
@@ -25,6 +28,8 @@ export interface ControlsUi {
   togglePause(): void;
   /** Pause automatically if playing (focus loss). */
   autoPause(): void;
+  /** True while the title screen is up (also on the first launch, before PLAY). */
+  titleShown(): boolean;
   /** Show the title overlay again (Back from level select). */
   showTitle(): void;
   /** Close the pause overlay if shown. */
@@ -72,12 +77,10 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   // ---- Audio: suspend while the pause overlay or a hidden tab stops the game ----
   const syncAudio = (): void => {
     if (!sound || !started) return;
-    if (pauseShown || document.visibilityState === 'hidden') sound.suspend();
+    sound.setPaused(pauseShown);
+    if (document.visibilityState === 'hidden') sound.suspend();
     else sound.resume();
   };
-  root.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement | null)?.closest?.('button')) sound?.play('click');
-  });
 
   // ---- Hint ----
   let hintTimer = 0;
@@ -149,7 +152,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
             else tiltFailed = true;
           }
           saveSettings(s);
-          ov.remove();
+          void leave(ov);
           resolve();
         });
         card.append(b);
@@ -158,6 +161,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
       ov.append(card);
       nav?.register(ov);
       root.appendChild(ov);
+      void enter(ov);
       nav?.focusInitial(ov);
     });
   let tiltFailed = false;
@@ -168,7 +172,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     let hint = '';
     if (!started) {
       sound?.unlock();
-      sound?.playMusic(0);
+      sound?.setScene('menu');
       void enterFullscreen();
       const asked = hasTouch() && !hasSavedSettings();
       if (asked) await askControls();
@@ -182,7 +186,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
               ? 'Hold anywhere to steer · tap to launch'
               : 'Drag anywhere to move · tap to launch';
     }
-    start.remove();
+    void leave(start);
     titleOpen = false;
     started = true;
     startBtn.disabled = false;
@@ -195,6 +199,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   startBtn.addEventListener('click', () => void choose(hooks?.onPlay));
   levelsBtn.addEventListener('click', () => void choose(hooks?.onLevels));
   root.appendChild(start);
+  void enter(start);
   nav?.register(start);
   nav?.focusInitial(start);
 
@@ -271,6 +276,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   const cSub = el('p', undefined, 'Progress in this level is lost.');
   const cBtns = el('div', 'ui-pconfirm-btns');
   const cCancel = el('button', 'ui-btn mid', 'CANCEL');
+  cCancel.dataset.sfx = 'back';
   const cQuit = el('button', 'ui-btn mid danger', 'QUIT');
   cBtns.append(cCancel, cQuit);
   confirmBox.append(cQ, cSub, cBtns);
@@ -293,23 +299,26 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     }
   };
   syncFs();
-  const hidePause = (): void => {
+  /** Closes the pause menu. `resume` = the player chose to carry on (starts the countdown); `instant` skips the fade. */
+  const hidePause = (resume = false, instant = false): void => {
     if (!pauseShown) return;
     pauseShown = false;
     setConfirm(false);
-    pauseOv.remove();
+    void leave(pauseOv, instant);
     controls.clearFire();
     syncAudio();
+    if (resume) hooks?.onResume?.();
   };
   const showPause = (): void => {
     if (pauseShown || settingsOpen || wizardOpen || !started || titleOpen || external) return;
     pauseShown = true;
     setConfirm(false);
     root.appendChild(pauseOv);
+    void enter(pauseOv);
     nav?.focusInitial(pauseOv);
     syncAudio();
   };
-  resumeBtn.addEventListener('click', hidePause);
+  resumeBtn.addEventListener('click', () => hidePause(true));
   cCancel.addEventListener('click', () => {
     setConfirm(false);
     quitBtn.focus({ preventScroll: true });
@@ -320,7 +329,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     if (confirming) {
       setConfirm(false);
       quitBtn.focus({ preventScroll: true });
-    } else hidePause();
+    } else hidePause(true);
   });
 
   // ---- HUD buttons: pause (far left of the band) and fullscreen (far right, collapses when unsupported) ----
@@ -372,6 +381,7 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   wrap.append(body, fade);
   const foot = el('div', 'ui-panel-foot');
   const closeBtn = el('button', 'ui-btn', 'DONE');
+  closeBtn.dataset.sfx = 'back';
   foot.append(closeBtn);
   panel.append(head, wrap, foot);
   panelOv.append(panel);
@@ -574,21 +584,23 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
   const openSettings = (): void => {
     if (settingsOpen) return;
     // From the pause overlay: hide it but keep the game paused (audio stays suspended); closing returns to it.
-    if (pauseShown) pauseOv.remove();
+    if (pauseShown) void leave(pauseOv);
     settingsOpen = true;
     say('');
     refresh();
     root.appendChild(panelOv);
+    void enter(panelOv);
     setTab(tabNow);
     nav?.focusInitial(panelOv);
   };
   const closeSettings = (): void => {
     if (!settingsOpen) return;
     settingsOpen = false;
-    panelOv.remove();
+    void leave(panelOv);
     controls.clearFire();
     if (pauseShown) {
       root.appendChild(pauseOv);
+      void enter(pauseOv);
       nav?.focusInitial(pauseOv);
     } else if (titleOpen) nav?.focusInitial(start);
   };
@@ -641,20 +653,22 @@ export function createControlsUi(root: HTMLElement, controls: Controls, sound?: 
     paused: () => settingsOpen || pauseShown || wizardOpen || titleOpen || external,
     togglePause: () => {
       if (!started || settingsOpen || wizardOpen || titleOpen || external) return;
-      if (pauseShown) hidePause();
+      if (pauseShown) hidePause(true);
       else showPause();
     },
     autoPause: showPause,
+    titleShown: () => titleOpen,
     showTitle: () => {
       if (titleOpen) return;
-      hidePause();
+      hidePause(false, true);
       hideToast();
       titleOpen = true;
       syncHud();
       root.appendChild(start);
+      void enter(start);
       nav?.focusInitial(start);
     },
-    closePause: hidePause,
+    closePause: () => hidePause(false, true),
     setExternalModal: (open) => {
       if (open === external) return;
       external = open;

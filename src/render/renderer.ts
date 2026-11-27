@@ -87,6 +87,8 @@ export class Renderer {
   beat = 0;
   /** False while a DOM menu covers the game (hides the canvas status sign). */
   showStatus = true;
+  /** False for the title-screen demo (no score / hearts band). */
+  showHud = true;
   /** Top HUD band slots (pause | score | level | hearts | fullscreen), shared with the DOM buttons. */
   hud: HudLayout = DEFAULT_HUD;
   /** HUD level label such as 'LV 4' (empty hides it). */
@@ -433,7 +435,7 @@ export class Renderer {
     ctx.translate(-this.shake.x, -this.shake.y);
 
     if (!this.lite) this.fx.drawSpeed(ctx, time);
-    this.drawHud(ctx, world, time, dt);
+    if (this.showHud) this.drawHud(ctx, world, time, dt);
     this.drawStatus(ctx, world, time, dt);
     if (this.flashT > 0) {
       ctx.globalCompositeOperation = 'lighter';

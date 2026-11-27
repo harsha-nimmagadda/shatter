@@ -71,3 +71,10 @@ export function loadProgress(count: number = CAMPAIGN.length): Progress {
 export function saveProgress(p: Progress): void {
   writeStore(PROGRESS_KEY, JSON.stringify(p));
 }
+
+/** Stars earned across all levels, and the most there are to earn (3 per level). */
+export function totalStars(p: Progress, count: number = CAMPAIGN.length): { have: number; max: number } {
+  let have = 0;
+  for (let i = 0; i < count; i++) have += clampInt(p.stars[i], 0, 3);
+  return { have, max: count * 3 };
+}

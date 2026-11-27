@@ -13,6 +13,10 @@ export class Nav {
   private readonly regs = new Map<Element, (() => void) | undefined>();
   private readonly edges = { a: new EdgeDetector(), b: new EdgeDetector(), u: new EdgeDetector(), d: new EdgeDetector(), l: new EdgeDetector(), r: new EdgeDetector() };
   private usingKeys = false;
+  /** Called before Enter/A/Escape/B act; returning true consumes the press (e.g. fast-forwarding a result tally). */
+  interrupt: (() => boolean) | null = null;
+  /** Called when a back handler ran from the keyboard / pad (for the back sound). */
+  onBack: (() => void) | null = null;
 
   constructor(private readonly root: HTMLElement) {
     window.addEventListener('keydown', this.onKey);
@@ -38,6 +42,7 @@ export class Nav {
   top(): HTMLElement | null {
     for (let i = this.root.children.length - 1; i >= 0; i--) {
       const c = this.root.children[i] as HTMLElement;
+      if (c.classList.contains('closing')) continue; // fading out: the screen beneath (if any) is the live one
       if (c.classList.contains('ui-overlay')) return this.regs.has(c) ? c : null;
     }
     return null;
@@ -106,6 +111,7 @@ export class Nav {
   private confirm(): void {
     const t = this.top();
     if (!t) return;
+    if (this.interrupt?.()) return;
     const a = document.activeElement as HTMLElement | null;
     if (a && t.contains(a) && (a.tagName === 'BUTTON' || (a as HTMLInputElement).type === 'checkbox')) a.click();
     else this.focusInitial(t);
@@ -116,6 +122,8 @@ export class Nav {
     const fn = t ? this.regs.get(t) : undefined;
     if (fn) {
       this.backFlag = true;
+      if (this.interrupt?.()) return;
+      this.onBack?.();
       fn();
     }
   }

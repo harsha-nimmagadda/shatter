@@ -8,6 +8,15 @@
  "click": [
   "click-1.mp3"
  ],
+ "cliploose": [
+  "cliploose-1.mp3"
+ ],
+ "clippop": [
+  "clippop-1.mp3"
+ ],
+ "combo": [
+  "combo-1.mp3"
+ ],
  "eraser": [
   "eraser-1.mp3"
  ],
@@ -16,6 +25,9 @@
  ],
  "gameover": [
   "gameover-1.mp3"
+ ],
+ "goldstar": [
+  "goldstar-1.mp3"
  ],
  "laser": [
   "laser-1.mp3"
@@ -32,11 +44,17 @@
  "paddle": [
   "paddle-1.mp3"
  ],
+ "paperclip": [
+  "paperclip-1.mp3"
+ ],
  "powerdown": [
   "powerdown-1.mp3"
  ],
  "powerup": [
   "powerup-1.mp3"
+ ],
+ "redpen": [
+  "redpen-1.mp3"
  ],
  "regen": [
   "regen-1.mp3"
@@ -46,6 +64,15 @@
  ],
  "shred": [
   "shred-1.mp3"
+ ],
+ "snip": [
+  "snip-1.mp3"
+ ],
+ "splash": [
+  "splash-1.mp3"
+ ],
+ "staple": [
+  "staple-1.mp3"
  ],
  "steel": [
   "steel-1.mp3"

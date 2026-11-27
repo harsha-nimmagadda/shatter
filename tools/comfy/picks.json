@@ -1,1 +1,163 @@
-{"paper": [2001, 2002, 2003], "fill-brick1": [3001, 3002, 3003], "fill-brick2": [4003], "fill-brick3": [5002, 5000], "fill-steel": [6002, 6003, 6100, 6102, 6101], "paddle": [7002, 7004], "ball-graphite": [8001, 8005], "ball-crumpled": [9000, 9001, 9003], "title": [10002], "icon-expand": [11002], "icon-multiball": [13001], "icon-fireball": [14002], "icon-catch": [15002], "icon-laser": [16100], "icon-speedup": [17002], "icon-slowdown": [18000], "icon-extra-life": [19000, 19002], "icon-kill-paddle": [20000], "icon-split-ball": [21001], "icon-through-ball": [22002], "icon-eraser": [23103, 23102], "icon-ink-blot": [24000], "icon-sharpener": [26001], "icon-ruler": [27000], "icon-crumpled": [28000, 28002], "icon-sticky-note": [29001], "margin-01": [30000], "margin-02": [31000], "margin-03": [32000], "margin-04": [33000], "margin-05": [34000], "margin-06": [35000], "margin-09": [38000], "margin-10": [39000], "margin-12": [41000], "icon-paper-plane": [25000]}
+{
+  "paper": [
+    2002,
+    2003
+  ],
+  "fill-brick1": [
+    3001,
+    3002,
+    3003
+  ],
+  "fill-brick2": [
+    4003
+  ],
+  "fill-brick3": [
+    5000,
+    5002
+  ],
+  "fill-steel": [
+    6101,
+    6100,
+    6102
+  ],
+  "paddle": [
+    7002,
+    7003
+  ],
+  "ball-graphite": [
+    8001,
+    8005
+  ],
+  "ball-crumpled": [
+    9000,
+    9003
+  ],
+  "title": [
+    10002
+  ],
+  "icon-expand": [
+    11002
+  ],
+  "icon-shrink": [
+    12100
+  ],
+  "icon-fireball": [
+    14001
+  ],
+  "icon-multiball": [
+    13001
+  ],
+  "icon-catch": [
+    15002
+  ],
+  "icon-laser": [
+    16000
+  ],
+  "icon-speedup": [
+    17002
+  ],
+  "icon-slowdown": [
+    18001
+  ],
+  "icon-extra-life": [
+    19002
+  ],
+  "icon-kill-paddle": [
+    20000
+  ],
+  "icon-split-ball": [
+    21001
+  ],
+  "icon-through-ball": [
+    22002
+  ],
+  "icon-eraser": [
+    23102
+  ],
+  "icon-ink-blot": [
+    24002
+  ],
+  "icon-paper-plane": [
+    25002
+  ],
+  "icon-sharpener": [
+    26001
+  ],
+  "icon-ruler": [
+    27000
+  ],
+  "icon-crumpled": [
+    28000
+  ],
+  "icon-sticky-note": [
+    29002
+  ],
+  "margin-01": [
+    30000
+  ],
+  "margin-02": [
+    31000
+  ],
+  "margin-03": [
+    32000
+  ],
+  "margin-04": [
+    33000
+  ],
+  "margin-05": [
+    34000
+  ],
+  "margin-06": [
+    35000
+  ],
+  "margin-07": [
+    36000
+  ],
+  "margin-08": [
+    37000
+  ],
+  "margin-09": [
+    38000
+  ],
+  "margin-10": [
+    39000
+  ],
+  "margin-11": [
+    40000
+  ],
+  "margin-12": [
+    41000
+  ],
+  "icon-photocopy": [
+    40000
+  ],
+  "icon-highlighter": [
+    41000
+  ],
+  "icon-correction-tape": [
+    42003
+  ],
+  "icon-glue-stick": [
+    43001
+  ],
+  "icon-stapler": [
+    44002
+  ],
+  "icon-gold-star": [
+    45000,
+    45003
+  ],
+  "icon-paperclip": [
+    46000,
+    46003
+  ],
+  "icon-scissors": [
+    47002
+  ],
+  "icon-red-pen": [
+    48002
+  ],
+  "paddle-pencil": [
+    50000
+  ]
+}

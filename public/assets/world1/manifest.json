@@ -3,8 +3,7 @@
   "group": "paper",
   "files": [
    "paper/paper-1.webp",
-   "paper/paper-2.webp",
-   "paper/paper-3.webp"
+   "paper/paper-2.webp"
   ]
  },
  "fill-brick1": {
@@ -33,9 +32,7 @@
   "files": [
    "fill/fill-steel-1.webp",
    "fill/fill-steel-2.webp",
-   "fill/fill-steel-3.webp",
-   "fill/fill-steel-4.webp",
-   "fill/fill-steel-5.webp"
+   "fill/fill-steel-3.webp"
   ]
  },
  "paddle": {
@@ -56,8 +53,7 @@
   "group": "ball",
   "files": [
    "ball/ball-crumpled-1.webp",
-   "ball/ball-crumpled-2.webp",
-   "ball/ball-crumpled-3.webp"
+   "ball/ball-crumpled-2.webp"
   ]
  },
  "title": {
@@ -72,16 +68,22 @@
    "icon/icon-expand-1.webp"
   ]
  },
- "icon-multiball": {
+ "icon-shrink": {
   "group": "icon",
   "files": [
-   "icon/icon-multiball-1.webp"
+   "icon/icon-shrink-1.webp"
   ]
  },
  "icon-fireball": {
   "group": "icon",
   "files": [
    "icon/icon-fireball-1.webp"
+  ]
+ },
+ "icon-multiball": {
+  "group": "icon",
+  "files": [
+   "icon/icon-multiball-1.webp"
   ]
  },
  "icon-catch": {
@@ -111,8 +113,7 @@
  "icon-extra-life": {
   "group": "icon",
   "files": [
-   "icon/icon-extra-life-1.webp",
-   "icon/icon-extra-life-2.webp"
+   "icon/icon-extra-life-1.webp"
   ]
  },
  "icon-kill-paddle": {
@@ -136,14 +137,19 @@
  "icon-eraser": {
   "group": "icon",
   "files": [
-   "icon/icon-eraser-1.webp",
-   "icon/icon-eraser-2.webp"
+   "icon/icon-eraser-1.webp"
   ]
  },
  "icon-ink-blot": {
   "group": "icon",
   "files": [
    "icon/icon-ink-blot-1.webp"
+  ]
+ },
+ "icon-paper-plane": {
+  "group": "icon",
+  "files": [
+   "icon/icon-paper-plane-1.webp"
   ]
  },
  "icon-sharpener": {
@@ -161,8 +167,7 @@
  "icon-crumpled": {
   "group": "icon",
   "files": [
-   "icon/icon-crumpled-1.webp",
-   "icon/icon-crumpled-2.webp"
+   "icon/icon-crumpled-1.webp"
   ]
  },
  "icon-sticky-note": {
@@ -207,6 +212,18 @@
    "margin/margin-06-1.webp"
   ]
  },
+ "margin-07": {
+  "group": "margin",
+  "files": [
+   "margin/margin-07-1.webp"
+  ]
+ },
+ "margin-08": {
+  "group": "margin",
+  "files": [
+   "margin/margin-08-1.webp"
+  ]
+ },
  "margin-09": {
   "group": "margin",
   "files": [
@@ -219,16 +236,78 @@
    "margin/margin-10-1.webp"
   ]
  },
+ "margin-11": {
+  "group": "margin",
+  "files": [
+   "margin/margin-11-1.webp"
+  ]
+ },
  "margin-12": {
   "group": "margin",
   "files": [
    "margin/margin-12-1.webp"
   ]
  },
- "icon-paper-plane": {
+ "icon-photocopy": {
   "group": "icon",
   "files": [
-   "icon/icon-paper-plane-1.webp"
+   "icon/icon-photocopy-1.webp"
+  ]
+ },
+ "icon-highlighter": {
+  "group": "icon",
+  "files": [
+   "icon/icon-highlighter-1.webp"
+  ]
+ },
+ "icon-correction-tape": {
+  "group": "icon",
+  "files": [
+   "icon/icon-correction-tape-1.webp"
+  ]
+ },
+ "icon-glue-stick": {
+  "group": "icon",
+  "files": [
+   "icon/icon-glue-stick-1.webp"
+  ]
+ },
+ "icon-stapler": {
+  "group": "icon",
+  "files": [
+   "icon/icon-stapler-1.webp"
+  ]
+ },
+ "icon-gold-star": {
+  "group": "icon",
+  "files": [
+   "icon/icon-gold-star-1.webp",
+   "icon/icon-gold-star-2.webp"
+  ]
+ },
+ "icon-paperclip": {
+  "group": "icon",
+  "files": [
+   "icon/icon-paperclip-1.webp",
+   "icon/icon-paperclip-2.webp"
+  ]
+ },
+ "icon-scissors": {
+  "group": "icon",
+  "files": [
+   "icon/icon-scissors-1.webp"
+  ]
+ },
+ "icon-red-pen": {
+  "group": "icon",
+  "files": [
+   "icon/icon-red-pen-1.webp"
+  ]
+ },
+ "paddle-pencil": {
+  "group": "paddle",
+  "files": [
+   "paddle/paddle-pencil-1.webp"
   ]
  }
 }

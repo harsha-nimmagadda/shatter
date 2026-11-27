@@ -7,3 +7,5 @@ export * from './bricks';
 export * from './drops';
 export * from './paddle';
 export * from './powerups';
+export * from './campaign';
+export * from './validate';

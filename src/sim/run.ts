@@ -63,8 +63,10 @@ const r4 = (v: number): number => Math.round(v * 1e4) / 1e4;
 export function runGame(opts: RunOpts): RunResult {
   const natural = opts.power === NATURAL;
   const none = opts.power === NONE;
+  const featured = (opts.level as { featured?: PowerType }).featured;
   const world = createWorld(opts.level, {
     seed: opts.seed,
+    ...(featured ? { featured } : {}),
     ...(none ? { dropChance: 0 } : natural ? {} : { forcedPower: opts.power as PowerType, dropChance: C.dropChance }),
   });
   const bot = createBot(opts.bot, hashSeed(`${opts.seed}|${opts.bot}|${opts.caseId}`));

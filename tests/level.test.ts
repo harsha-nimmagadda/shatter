@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseLevel, LEVEL_1 } from '../src/engine';
+import { CAMPAIGN, createWorld, parseLevel, pickPower, validateLevel, LEVEL_1 } from '../src/engine';
 
 describe('parseLevel', () => {
   it('places bricks on the grid with hp and kind', () => {
@@ -25,5 +25,39 @@ describe('parseLevel', () => {
 
   it('LEVEL_1 parses', () => {
     expect(parseLevel(LEVEL_1, 0).some((k) => k.kind === 'steel')).toBe(true);
+  });
+});
+
+describe('campaign', () => {
+  it('has 15 levels that all pass the validator and parse', () => {
+    expect(CAMPAIGN).toHaveLength(15);
+    for (const l of CAMPAIGN) {
+      expect(validateLevel(l), l.name).toEqual([]);
+      expect(() => parseLevel(l, 0)).not.toThrow();
+    }
+  });
+
+  it('validator rejects bricks sealed in by clips and bad rows', () => {
+    const sealed = { name: 's', rows: ['###.......', '#1#.......', '###.......'] };
+    expect(validateLevel(sealed)).toEqual(['brick at row 1, col 1 ("1") can\'t be reached']);
+    expect(validateLevel({ name: 'w', rows: ['111'] })[0]).toMatch(/expected 10/);
+    expect(validateLevel({ name: 'z', rows: ['rrrrrrrrrr'] })).toEqual(['no bricks that count toward winning']);
+  });
+
+  it('a featured power-up doubles its drop weight', () => {
+    let plain = 0;
+    let featured = 0;
+    for (let i = 0; i < 2000; i++) {
+      const r = (i + 0.5) / 2000;
+      if (pickPower(r) === 'stapler') plain++;
+      if (pickPower(r, 'stapler') === 'stapler') featured++;
+    }
+    expect(featured / plain).toBeGreaterThan(1.7);
+  });
+
+  it('carried score keeps extra lives on the 10,000 grid', () => {
+    const w = createWorld(CAMPAIGN[0]!, { score: 12_345 });
+    expect(w.score).toBe(12_345);
+    expect(w.nextLifeAt).toBe(20_000);
   });
 });

@@ -127,6 +127,8 @@ export interface World {
   dropChance: number;
   /** Debug: every drop is this power. */
   forcedPower: PowerType | null;
+  /** Power-up whose drop weight is doubled on this level (campaign levels that introduce one). */
+  featured: PowerType | null;
 }
 
 export interface Input {
@@ -144,7 +146,16 @@ export function newStuckBall(): Ball {
 
 export function createWorld(
   level: Level,
-  opts: { seed?: number; lives?: number; levelIndex?: number; forcedPower?: PowerType; dropChance?: number } = {},
+  opts: {
+    seed?: number;
+    lives?: number;
+    /** Score carried in from earlier campaign levels (extra lives continue from the next 10,000). */
+    score?: number;
+    levelIndex?: number;
+    forcedPower?: PowerType;
+    featured?: PowerType;
+    dropChance?: number;
+  } = {},
 ): World {
   const paddle = { x: CONFIG.width / 2, y: CONFIG.paddleY, w: CONFIG.paddleW, h: CONFIG.paddleH };
   const ball = newStuckBall();
@@ -156,7 +167,7 @@ export function createWorld(
     paddle,
     balls: [ball],
     bricks: parseLevel(level, opts.levelIndex ?? 0),
-    score: 0,
+    score: opts.score ?? 0,
     lives: opts.lives ?? CONFIG.lives,
     status: 'serve',
     speed: CONFIG.startSpeed,
@@ -173,9 +184,10 @@ export function createWorld(
     combo: 0,
     clipStreak: 0,
     stallT: 0,
-    nextLifeAt: CONFIG.extraLifeEvery,
+    nextLifeAt: (Math.floor((opts.score ?? 0) / CONFIG.extraLifeEvery) + 1) * CONFIG.extraLifeEvery,
     nextId: 1,
     dropChance: opts.dropChance ?? (opts.forcedPower ? 1 : CONFIG.dropChance),
     forcedPower: opts.forcedPower ?? null,
+    featured: opts.featured ?? null,
   };
 }

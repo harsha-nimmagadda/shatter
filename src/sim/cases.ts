@@ -1,8 +1,14 @@
-import { LEVEL_1, POWER_TYPES, TEST_LEVELS, type Level } from '../engine';
+import { CAMPAIGN, LEVEL_1, POWER_TYPES, TEST_LEVELS, type Level } from '../engine';
 import { BOT_SKILLS, type BotSkill } from './bots';
 import { NATURAL, NONE, runGame, type RunResult } from './run';
 
-export const LEVELS: Record<string, Level> = { level1: LEVEL_1, ...TEST_LEVELS };
+/** Campaign levels are keyed c01..c15. */
+export const CAMPAIGN_KEYS: readonly string[] = CAMPAIGN.map((_, i) => `c${String(i + 1).padStart(2, '0')}`);
+export const LEVELS: Record<string, Level> = {
+  level1: LEVEL_1,
+  ...TEST_LEVELS,
+  ...Object.fromEntries(CAMPAIGN.map((l, i) => [CAMPAIGN_KEYS[i]!, l])),
+};
 export const POWER_CASES: readonly string[] = [NONE, NATURAL, ...POWER_TYPES];
 
 export interface CaseSpec {

@@ -41,7 +41,7 @@ describe('sim', () => {
   });
 
   it('builds the full matrix and summarizes runs', () => {
-    expect(buildCases()).toHaveLength(6 * 17 * 3);
+    expect(buildCases()).toHaveLength(21 * 17 * 3);
     const rs = [runGame(base({ maxTimeSec: 5 })), runGame(base({ seed: 2, maxTimeSec: 5 }))];
     const [g] = summarize(rs);
     expect(g!.count).toBe(2);

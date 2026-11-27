@@ -535,7 +535,7 @@ describe('correction, goldstar, redpen', () => {
     const w = world();
     w.speed = 900;
     applyPower(w, 'redpen');
-    expect(w.speed).toBe(1000);
+    expect(w.speed).toBe(CONFIG.maxSpeed);
     const v = world();
     applyPower(v, 'redpen');
     v.speed = 430;

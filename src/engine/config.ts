@@ -37,8 +37,8 @@ export const CONFIG = {
   ballR: 8,
   startSpeed: 420,
   /** Fractional speed gain per brick break. */
-  speedGain: 0.015,
-  maxSpeed: 1000,
+  speedGain: 0.012,
+  maxSpeed: 900,
   /** Max paddle bounce angle from vertical, degrees. */
   maxBounceDeg: 60,
   /** Launch angle spread from vertical, degrees. */

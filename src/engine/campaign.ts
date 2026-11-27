@@ -23,7 +23,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
   {
     name: 'Heart',
     hint: 'Break every brick',
-    stars: [1640, 1920],
+    stars: [1700, 1960],
     rows: [
       '.11....11.',
       '1111..1111',
@@ -38,7 +38,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
   {
     name: 'Smiley',
     hint: 'Outlined bricks take two hits',
-    stars: [2060, 2390],
+    stars: [2080, 2440],
     rows: [
       '..111111..',
       '.11111111.',
@@ -54,7 +54,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
     name: 'Rocket',
     hint: 'The darkest bricks take three',
     featured: 'stapler',
-    stars: [1960, 2280],
+    stars: [1930, 2300],
     rows: [
       '....33....',
       '...3223...',
@@ -70,7 +70,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
   {
     name: 'Chain Reaction',
     hint: 'Bombs set off their neighbours',
-    stars: [3340, 3590],
+    stars: [3330, 3600],
     rows: [
       '2222222222',
       '2x222222x2',
@@ -84,9 +84,9 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
   {
     name: 'Rush Hour',
     hint: 'Sliding bricks never sit still',
-    stars: [1760, 2020],
+    stars: [1690, 1930],
     rows: [
-      '3333333333',
+      '2222222222',
       'm.........',
       '2222222222',
       '.....m....',
@@ -99,28 +99,26 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
     name: 'Fortress',
     hint: 'Metal clips can\'t break. Find the gate',
     featured: 'photocopy',
-    stars: [1650, 2040],
+    stars: [1380, 1560],
     rows: [
       '.#..##..#.',
-      '1111111111',
       '.22222222.',
-      '.22333322.',
+      '.22222222.',
       '#22222222#',
       '#11....11#',
-      '##......##',
+      '#........#',
     ],
   },
   {
     name: 'Ghost',
     hint: 'Some bricks are invisible until hit',
-    stars: [2020, 2300],
+    stars: [1730, 1920],
     rows: [
       '...hhhh...',
       '..hhhhhh..',
       '.hh2hh2hh.',
-      '.hhhhhhhh.',
-      '.hhhhhhhh.',
-      '.hhhhhhhh.',
+      '.hh1111hh.',
+      '.hh1111hh.',
       '.h.hh.hh.h',
     ],
   },
@@ -128,7 +126,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
     name: 'Hedge',
     hint: 'Green bricks grow back. Slip through fast',
     featured: 'crumpled',
-    stars: [1380, 1540],
+    stars: [1400, 1580],
     rows: [
       '.1.1..1.1.',
       '1x1....1x1',
@@ -142,7 +140,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
   {
     name: 'UFO',
     hint: 'Everything you know so far',
-    stars: [1820, 2080],
+    stars: [1840, 2100],
     rows: [
       '...3333...',
       '..311113..',
@@ -157,7 +155,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
   {
     name: 'Cat',
     hint: 'Boop the nose',
-    stars: [2040, 2520],
+    stars: [2090, 2490],
     rows: [
       '2........2',
       '22......22',
@@ -173,7 +171,7 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
     name: 'Storm',
     hint: 'Clouds drift across the bolt',
     featured: 'plane',
-    stars: [1480, 1660],
+    stars: [1460, 1640],
     rows: [
       'm....m....',
       '....2222..',
@@ -188,14 +186,14 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
   {
     name: 'Ringed Planet',
     hint: 'Aim for the gaps in the ring',
-    stars: [1600, 1800],
+    stars: [1460, 1670],
     rows: [
       '....22....',
-      '..222222..',
+      '..211112..',
       '.22233222.',
       '.#..##..#.',
-      '.22222222.',
-      '..222222..',
+      '.21111112.',
+      '..211112..',
       '....22....',
     ],
   },
@@ -203,26 +201,26 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
     name: 'Maze',
     hint: 'Clips, bombs and hidden bricks',
     featured: 'eraser',
-    stars: [1380, 1560],
+    stars: [1230, 1420],
     rows: [
       '1111111111',
       '#..####..#',
       '1x1hh1hx11',
-      '2222222222',
+      '1111111111',
       '##......##',
     ],
   },
   {
     name: 'Robot',
     hint: 'Its eyes are hidden',
-    stars: [2020, 2340],
+    stars: [1960, 2180],
     rows: [
       '....##....',
       '..222222..',
       '.2h2222h2.',
-      '.22222222.',
+      '.21111112.',
       '.2x3333x2.',
-      '.22222222.',
+      '.21111112.',
       '...2..2...',
       '..33..33..',
     ],
@@ -231,13 +229,13 @@ export const CAMPAIGN: readonly CampaignLevel[] = [
     name: 'The Core',
     hint: 'Break into the core',
     featured: 'photocopy',
-    stars: [1790, 2000],
+    stars: [1900, 2100],
     rows: [
       '..######..',
       '.#r3333r#.',
       '.#r3xx3r#.',
       '.#r3xx3r#.',
-      '..rrrrrr..',
+      '..rr..rr..',
       '...#..#...',
       'm........m',
       'hhhhhhhhhh',

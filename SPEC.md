@@ -6,7 +6,7 @@ is unchanged from the current engine (`src/engine/config.ts`).
 
 ## Unchanged from today
 - 540×960 logical playfield, 120 Hz fixed step, substepped collision.
-- Ball: start 420 px/s, +1.5% per brick broken by a ball, max 1000. Launch ±20°, paddle bounce ±60°
+- Ball: start 420 px/s, +1.2% per brick broken, max 900 (was +1.5%/1000; lowered after the first phone playtest found late-level balls too quick). Launch ±20°, paddle bounce ±60°
   (±40° during Ruler), min vertical ratio 0.3.
 - Lives: start 3, max 9. Losing a life resets speed, clears timed effects, falling capsules, staples,
   the combo and the sticky note, then serves.

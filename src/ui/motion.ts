@@ -62,7 +62,16 @@ const generation = new WeakMap<HTMLElement, number>();
 /** Resolves when the animation ends or (safety net for hidden tabs / cancelled animations) a little after it should have. */
 function settle(a: Animation, ms: number): Promise<void> {
   return new Promise((resolve) => {
-    const t = window.setTimeout(resolve, ms + 150);
+    // If the animation timeline stalls (throttled or backgrounded page), jump it to its end so an overlay can never
+    // be left stuck at its starting opacity of 0.
+    const t = window.setTimeout(() => {
+      try {
+        a.finish();
+      } catch {
+        a.cancel();
+      }
+      resolve();
+    }, ms + 150);
     a.finished.then(
       () => {
         window.clearTimeout(t);
@@ -91,11 +100,24 @@ function play(ov: HTMLElement, dir: 'in' | 'out'): Promise<void>[] {
   return list;
 }
 
+/**
+ * Drops every animation effect on the overlay and its panel, including the opacity-0 fill a finished leave()
+ * leaves behind. Overlays are reused DOM nodes: without this, a re-opened overlay fades in and then snaps back to
+ * invisible (the title, the settings panel and the pause menu all hit this).
+ */
+function clearEffects(ov: HTMLElement): void {
+  for (const a of running.get(ov) ?? []) a.cancel();
+  running.delete(ov);
+  const panel = ov.querySelector<HTMLElement>(PANEL);
+  for (const el of panel ? [ov, panel] : [ov]) {
+    if (typeof el.getAnimations === 'function') for (const a of el.getAnimations()) a.cancel();
+  }
+}
+
 /** Stops a leave() that is still running (the overlay is being shown again). */
 function cancelLeave(ov: HTMLElement): void {
   generation.set(ov, (generation.get(ov) ?? 0) + 1);
-  for (const a of running.get(ov) ?? []) a.cancel();
-  running.delete(ov);
+  clearEffects(ov);
   ov.classList.remove('closing');
   ov.removeAttribute('aria-hidden');
 }
@@ -118,8 +140,8 @@ export function leave(ov: HTMLElement, instant = false): Promise<void> {
   generation.set(ov, gen);
   const finish = (): void => {
     if (generation.get(ov) !== gen) return;
-    running.delete(ov);
     ov.remove();
+    clearEffects(ov);
     ov.classList.remove('closing');
     ov.removeAttribute('aria-hidden');
   };
